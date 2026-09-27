@@ -1,0 +1,12 @@
+# Mirrors services/api-service/src/main/resources/application.yml (JPA section).
+spring:
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          batch_size: 50
+        order_inserts: true
+        order_updates: true

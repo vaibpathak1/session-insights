@@ -20,6 +20,14 @@ spring:
       appPassword: ${POSTGRES_APP_PASSWORD:insights_app_dev_pw}
   jpa:
     open-in-view: false
+    hibernate:
+      ddl-auto: validate          # Flyway owns the schema
+    properties:
+      hibernate:
+        jdbc:
+          batch_size: 50          # with reWriteBatchedInserts=true on the JDBC URL
+        order_inserts: true
+        order_updates: true
 
 clickhouse:
   endpoint: ${CLICKHOUSE_URL:http://localhost:8123}
