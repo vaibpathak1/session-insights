@@ -81,3 +81,29 @@ export function isBlocked(element: Element): boolean {
     return true;
   }
 }
+
+/** Text never read for click labels, besides blocked elements. */
+const SKIPPED_TEXT_PARENTS = 'script,style,noscript,textarea,select,option,template';
+
+/**
+ * Visible text of a clicked element, for the CLICK event's `targetText`. Never taken from
+ * form fields or blocked/sensitive elements (including blocked descendants); masked like
+ * page text when `maskAllText` is on. At most `maxLength` characters.
+ */
+export function clickText(
+  element: Element,
+  maskAllText: boolean,
+  maxLength: number,
+): string | undefined {
+  if (isBlocked(element) || element.closest('input,textarea,select')) return undefined;
+  let text = '';
+  const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+  for (let node = walker.nextNode(); node && text.length <= maxLength; node = walker.nextNode()) {
+    const parent = node.parentElement;
+    if (!parent || parent.closest(SKIPPED_TEXT_PARENTS) || isBlocked(parent)) continue;
+    text += `${node.nodeValue ?? ''} `;
+  }
+  text = text.replace(/\s+/g, ' ').trim().slice(0, maxLength).trim();
+  if (!text) return undefined;
+  return maskAllText ? text.replace(/\S/g, '*') : text;
+}

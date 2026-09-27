@@ -15,4 +15,9 @@ export default tseslint.config(
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
     },
   },
+  {
+    // tests compare patched methods (history.pushState, console.error) by identity
+    files: ['test/**/*.ts'],
+    rules: { '@typescript-eslint/unbound-method': 'off' },
+  },
 );
