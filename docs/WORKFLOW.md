@@ -38,4 +38,7 @@ Every phase follows the same loop. Nothing reaches `main` without a PR and green
 
 - One phase per branch, one conversation per phase (`/clear` between phases).
 - If Claude Code wants to change an ADR or add a feature outside the phase, stop and decide deliberately.
-- Keep PRs reviewable: if a phase grows past ~1,500 changed lines, split it.
+- Keep PRs reviewable: if a phase grows past ~1,500 changed lines of reviewable logic, split it.
+  Count logic only: exclude tests, generated code and entity accessors. Never split code from
+  its tests. For a large PR, add a review guide to the body (line counts by category, files to
+  review carefully vs. skim) and keep commits 1:1 with tasks so it can be reviewed per commit.
