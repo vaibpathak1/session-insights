@@ -24,8 +24,8 @@ public abstract class ApiIntegrationTest {
         registry.add("spring.datasource.password", () -> TestContainers.APP_PASSWORD);
         registry.add("spring.flyway.user", POSTGRES::getUsername);
         registry.add("spring.flyway.password", POSTGRES::getPassword);
-        registry.add("spring.flyway.placeholders.appUser", () -> TestContainers.APP_USER);
-        registry.add("spring.flyway.placeholders.appPassword", () -> TestContainers.APP_PASSWORD);
+        TestContainers.flywayPlaceholders().forEach((name, value) ->
+                registry.add("spring.flyway.placeholders." + name, () -> value));
         registry.add("clickhouse.endpoint", () -> TestContainers.clickhouseEndpoint(CLICKHOUSE));
         registry.add("clickhouse.database", () -> TestContainers.DATABASE);
         registry.add("clickhouse.username", () -> TestContainers.USER);

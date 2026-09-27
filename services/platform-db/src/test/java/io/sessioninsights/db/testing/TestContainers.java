@@ -5,7 +5,9 @@ import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
-/** Container factories shared by platform-db, platform-domain and api-service tests. */
+import java.util.Map;
+
+/** Container factories shared by platform-db, platform-domain, api-service and collector-service tests. */
 public final class TestContainers {
 
     public static final String DATABASE = "insights";
@@ -13,9 +15,17 @@ public final class TestContainers {
     public static final String PASSWORD = "insights_test_pw";
     public static final String APP_USER = "insights_app";
     public static final String APP_PASSWORD = "insights_app_test_pw";
+    public static final String COLLECTOR_USER = "insights_collector";
+    public static final String COLLECTOR_PASSWORD = "insights_collector_test_pw";
     public static final int CLICKHOUSE_HTTP_PORT = 8123;
 
     private TestContainers() {
+    }
+
+    /** Flyway placeholders for the PostgreSQL migrations (roles created by V3 and V4). */
+    public static Map<String, String> flywayPlaceholders() {
+        return Map.of("appUser", APP_USER, "appPassword", APP_PASSWORD,
+                "collectorUser", COLLECTOR_USER, "collectorPassword", COLLECTOR_PASSWORD);
     }
 
     public static PostgreSQLContainer postgres() {

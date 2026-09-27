@@ -42,6 +42,8 @@
         <spring-ai.version>2.0.1</spring-ai.version>
         <!-- ClickHouse Java client (Apache-2.0); not managed by the Boot BOM. -->
         <clickhouse-client.version>0.10.0</clickhouse-client.version>
+        <!-- In-memory token buckets for collector rate limiting (Apache-2.0); not in the Boot BOM. -->
+        <bucket4j.version>8.20.0</bucket4j.version>
         <!-- ADR-0001: surface virtual-thread pinning (Java 21) in local runs and tests -->
         <pinning.trace>-Djdk.tracePinnedThreads=short</pinning.trace>
     </properties>
@@ -81,6 +83,11 @@
                 <groupId>com.clickhouse</groupId>
                 <artifactId>client-v2</artifactId>
                 <version>${clickhouse-client.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.bucket4j</groupId>
+                <artifactId>bucket4j_jdk17-core</artifactId>
+                <version>${bucket4j.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>

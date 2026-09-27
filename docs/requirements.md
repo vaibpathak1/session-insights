@@ -35,9 +35,9 @@ User-facing features (F1–F15) and their acceptance criteria live in
 |---|---|---|
 | FR-TEN-1 | Tenants, sites and site keys; every record carries `tenant_id` | 1 ✅ |
 | FR-TEN-2 | Configuration entities use soft delete (`is_active`, `deleted_at`) | 1 ✅ |
-| FR-ING-1 | Collector accepts batched events over HTTPS (JSON, gzip), authenticated by site key + origin allow-list | 2 |
-| FR-ING-2 | Collector validates, stamps server time, and produces to Kafka keyed by `sessionId` | 2 |
-| FR-ING-3 | Per-tenant rate limiting with `429` + `Retry-After` | 2 |
+| FR-ING-1 | Collector accepts batched events over HTTPS (JSON, gzip), authenticated by site key + origin allow-list | 2 ✅ |
+| FR-ING-2 | Collector validates, stamps server time, and produces to Kafka keyed by `sessionId` | 2 ✅ |
+| FR-ING-3 | Per-tenant rate limiting with `429` + `Retry-After` | 2 ✅ (per site key, see ADR-0010) |
 | FR-SDK-1 | Browser SDK records via rrweb, batches, sends with `fetch keepalive` / `sendBeacon` on unload | 3 |
 | FR-SDK-2 | Privacy by default: all inputs masked, opt-in unmasking per selector, block-list for elements | 3 |
 | FR-PRC-1 | Events persisted to ClickHouse, replay chunks to object storage | 4 |

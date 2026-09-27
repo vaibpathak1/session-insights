@@ -16,6 +16,7 @@ public final class TestImages {
 
     public static final String POSTGRES = ENV.getProperty("POSTGRES_IMAGE");
     public static final String CLICKHOUSE = ENV.getProperty("CLICKHOUSE_IMAGE");
+    public static final String KAFKA = ENV.getProperty("KAFKA_IMAGE");
 
     private TestImages() {
     }

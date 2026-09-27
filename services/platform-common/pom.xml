@@ -12,4 +12,18 @@
 
     <artifactId>platform-common</artifactId>
     <description>Shared contracts: event records, topic names, tenant identifiers. No Spring Boot app.</description>
+
+    <dependencies>
+        <!-- Jackson 3 for the wire contracts (ADR-0001); version from the Boot BOM. -->
+        <dependency>
+            <groupId>tools.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
 </project>
