@@ -73,10 +73,27 @@
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-surefire-plugin</artifactId>
                     <configuration>
-                        <argLine>${pinning.trace}</argLine>
+                        <!-- Mockito as a static agent: the inline mock maker's self-attach is
+                             deprecated on JDK 21+. Path comes from dependency:properties below. -->
+                        <argLine>-javaagent:${org.mockito:mockito-core:jar} ${pinning.trace}</argLine>
                     </configuration>
                 </plugin>
             </plugins>
         </pluginManagement>
+        <plugins>
+            <!-- Exposes ${groupId:artifactId:type} path properties for the surefire argLine.
+                 Every module with tests must have mockito-core (via spring-boot-starter-test). -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>properties</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
     </build>
 </project>
