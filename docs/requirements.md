@@ -33,8 +33,8 @@ User-facing features (F1–F15) and their acceptance criteria live in
 
 | ID | Requirement | Phase |
 |---|---|---|
-| FR-TEN-1 | Tenants, sites and site keys; every record carries `tenant_id` | 1 |
-| FR-TEN-2 | Configuration entities use soft delete (`is_active`, `deleted_at`) | 1 |
+| FR-TEN-1 | Tenants, sites and site keys; every record carries `tenant_id` | 1 ✅ |
+| FR-TEN-2 | Configuration entities use soft delete (`is_active`, `deleted_at`) | 1 ✅ |
 | FR-ING-1 | Collector accepts batched events over HTTPS (JSON, gzip), authenticated by site key + origin allow-list | 2 |
 | FR-ING-2 | Collector validates, stamps server time, and produces to Kafka keyed by `sessionId` | 2 |
 | FR-ING-3 | Per-tenant rate limiting with `429` + `Retry-After` | 2 |
