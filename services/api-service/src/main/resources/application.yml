@@ -4,6 +4,36 @@ spring:
   threads:
     virtual:
       enabled: true   # ADR-0001: virtual threads for all blocking I/O
+  # Defaults match .env.example (local development only); override via environment.
+  # The app connects as the non-owner role so row-level security applies (ADR-0008);
+  # Flyway connects as the schema owner and creates that role (V3).
+  datasource:
+    url: ${POSTGRES_URL:jdbc:postgresql://localhost:5432/insights?reWriteBatchedInserts=true}
+    username: ${POSTGRES_APP_USER:insights_app}
+    password: ${POSTGRES_APP_PASSWORD:insights_app_dev_pw}
+  flyway:
+    user: ${POSTGRES_USER:insights}
+    password: ${POSTGRES_PASSWORD:insights_dev_pw}
+    locations: classpath:db/migration/postgres
+    placeholders:
+      appUser: ${POSTGRES_APP_USER:insights_app}
+      appPassword: ${POSTGRES_APP_PASSWORD:insights_app_dev_pw}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate          # Flyway owns the schema
+    properties:
+      hibernate:
+        jdbc:
+          batch_size: 50          # with reWriteBatchedInserts=true on the JDBC URL
+        order_inserts: true
+        order_updates: true
+
+clickhouse:
+  endpoint: ${CLICKHOUSE_URL:http://localhost:8123}
+  database: ${CLICKHOUSE_DB:insights}
+  username: ${CLICKHOUSE_USER:insights}
+  password: ${CLICKHOUSE_PASSWORD:insights_dev_pw}
 
 server:
   port: 8080

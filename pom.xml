@@ -28,6 +28,8 @@
 
     <modules>
         <module>services/platform-common</module>
+        <module>services/platform-db</module>
+        <module>services/platform-domain</module>
         <module>services/collector-service</module>
         <module>services/event-processor</module>
         <module>services/analysis-worker</module>
@@ -38,6 +40,8 @@
         <java.version>21</java.version>
         <!-- ADR-0001: Spring AI 2.x requires Boot 4.x. -->
         <spring-ai.version>2.0.1</spring-ai.version>
+        <!-- ClickHouse Java client (Apache-2.0); not managed by the Boot BOM. -->
+        <clickhouse-client.version>0.10.0</clickhouse-client.version>
         <!-- ADR-0001: surface virtual-thread pinning (Java 21) in local runs and tests -->
         <pinning.trace>-Djdk.tracePinnedThreads=short</pinning.trace>
     </properties>
@@ -56,6 +60,28 @@
                 <artifactId>platform-common</artifactId>
                 <version>${project.version}</version>
             </dependency>
+            <dependency>
+                <groupId>io.sessioninsights</groupId>
+                <artifactId>platform-db</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.sessioninsights</groupId>
+                <artifactId>platform-db</artifactId>
+                <version>${project.version}</version>
+                <type>test-jar</type>
+                <scope>test</scope>
+            </dependency>
+            <dependency>
+                <groupId>io.sessioninsights</groupId>
+                <artifactId>platform-domain</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.clickhouse</groupId>
+                <artifactId>client-v2</artifactId>
+                <version>${clickhouse-client.version}</version>
+            </dependency>
         </dependencies>
     </dependencyManagement>
 
@@ -73,10 +99,27 @@
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-surefire-plugin</artifactId>
                     <configuration>
-                        <argLine>${pinning.trace}</argLine>
+                        <!-- Mockito as a static agent: the inline mock maker's self-attach is
+                             deprecated on JDK 21+. Path comes from dependency:properties below. -->
+                        <argLine>-javaagent:${org.mockito:mockito-core:jar} ${pinning.trace}</argLine>
                     </configuration>
                 </plugin>
             </plugins>
         </pluginManagement>
+        <plugins>
+            <!-- Exposes ${groupId:artifactId:type} path properties for the surefire argLine.
+                 Every module with tests must have mockito-core (via spring-boot-starter-test). -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>properties</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
     </build>
 </project>
