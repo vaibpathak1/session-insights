@@ -4,6 +4,19 @@ spring:
   threads:
     virtual:
       enabled: true   # ADR-0001: virtual threads for all blocking I/O
+  # Defaults match .env.example (local development only); override via environment.
+  datasource:
+    url: ${POSTGRES_URL:jdbc:postgresql://localhost:5432/insights?reWriteBatchedInserts=true}
+    username: ${POSTGRES_USER:insights}
+    password: ${POSTGRES_PASSWORD:insights_dev_pw}
+  flyway:
+    locations: classpath:db/migration/postgres
+
+clickhouse:
+  endpoint: ${CLICKHOUSE_URL:http://localhost:8123}
+  database: ${CLICKHOUSE_DB:insights}
+  username: ${CLICKHOUSE_USER:insights}
+  password: ${CLICKHOUSE_PASSWORD:insights_dev_pw}
 
 server:
   port: 8080

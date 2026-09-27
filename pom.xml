@@ -28,6 +28,7 @@
 
     <modules>
         <module>services/platform-common</module>
+        <module>services/platform-db</module>
         <module>services/collector-service</module>
         <module>services/event-processor</module>
         <module>services/analysis-worker</module>
@@ -38,6 +39,8 @@
         <java.version>21</java.version>
         <!-- ADR-0001: Spring AI 2.x requires Boot 4.x. -->
         <spring-ai.version>2.0.1</spring-ai.version>
+        <!-- ClickHouse Java client (Apache-2.0); not managed by the Boot BOM. -->
+        <clickhouse-client.version>0.10.0</clickhouse-client.version>
         <!-- ADR-0001: surface virtual-thread pinning (Java 21) in local runs and tests -->
         <pinning.trace>-Djdk.tracePinnedThreads=short</pinning.trace>
     </properties>
@@ -55,6 +58,28 @@
                 <groupId>io.sessioninsights</groupId>
                 <artifactId>platform-common</artifactId>
                 <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.sessioninsights</groupId>
+                <artifactId>platform-db</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.sessioninsights</groupId>
+                <artifactId>platform-db</artifactId>
+                <version>${project.version}</version>
+                <type>test-jar</type>
+                <scope>test</scope>
+            </dependency>
+            <dependency>
+                <groupId>io.sessioninsights</groupId>
+                <artifactId>platform-domain</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.clickhouse</groupId>
+                <artifactId>client-v2</artifactId>
+                <version>${clickhouse-client.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>
