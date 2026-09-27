@@ -9,6 +9,20 @@ export type SendResult =
   /** 401/403: bad key or origin; stop the SDK for this page. */
   | { kind: 'fatal'; status: number };
 
+export interface PreparedBody {
+  payload: string | ArrayBuffer;
+  /** Bytes on the wire. */
+  bytes: number;
+  gzip: boolean;
+}
+
+/** Normal sends up to this size use `keepalive` (browsers cap keepalive at ~64 KB in flight). */
+export const KEEPALIVE_MAX_BYTES = 32 * 1024;
+
+const encoder = typeof TextEncoder !== 'undefined' ? new TextEncoder() : null;
+export const utf8Length = (s: string): number =>
+  encoder ? encoder.encode(s).length : s.length * 3;
+
 export interface TransportOptions {
   collectorUrl: string;
   siteKey: string;
@@ -35,20 +49,33 @@ export class Transport {
     return `${this.options.collectorUrl}/v1/${path}?k=${encodeURIComponent(this.options.siteKey)}`;
   }
 
-  async send(path: 'events' | 'replay', body: string): Promise<SendResult> {
-    const headers: Record<string, string> = { 'Content-Type': 'text/plain;charset=UTF-8' };
-    let payload: BodyInit = body;
+  /** Compresses the body when possible (async, off the main thread in CompressionStream). */
+  async prepare(body: string): Promise<PreparedBody> {
     const compressed = await gzip(body);
     if (compressed) {
-      headers['Content-Encoding'] = 'gzip';
-      payload = compressed;
+      return { payload: compressed, bytes: compressed.byteLength, gzip: true };
     }
+    return { payload: body, bytes: utf8Length(body), gzip: false };
+  }
+
+  /**
+   * Posts a prepared body. `keepalive` lets a small request outlive the page, so a page-hide
+   * beacon need not resend it; browsers refuse keepalive bodies over ~64 KB in total.
+   */
+  async post(
+    path: 'events' | 'replay',
+    body: PreparedBody,
+    keepalive: boolean,
+  ): Promise<SendResult> {
+    const headers: Record<string, string> = { 'Content-Type': 'text/plain;charset=UTF-8' };
+    if (body.gzip) headers['Content-Encoding'] = 'gzip';
     let response: Response;
     try {
       response = await fetch(this.url(path), {
         method: 'POST',
         headers,
-        body: payload,
+        body: body.payload,
+        keepalive,
         credentials: 'omit',
         mode: 'cors',
       });

@@ -359,6 +359,75 @@ describe('page hide (beacon)', () => {
   });
 });
 
+describe('page hide while a normal send is in progress', () => {
+  let beaconBodies: string[];
+
+  beforeEach(() => {
+    beaconBodies = [];
+    Object.defineProperty(navigator, 'sendBeacon', {
+      configurable: true,
+      writable: true,
+      value: vi.fn((_url: string, data: Blob) => {
+        void data.text().then((t) => beaconBodies.push(t));
+        return true;
+      }),
+    });
+  });
+
+  const sentIds = (bodies: string[]) =>
+    bodies.flatMap((b) => (JSON.parse(b) as EventBatch).events.map((e) => e.clientEventId));
+
+  it('uses keepalive for small sends only', async () => {
+    vi.stubGlobal('CompressionStream', undefined);
+    const { outbox, sender } = harness();
+    outbox.addEvent(S1, ANON, event(1));
+    outbox.addEvent(S2, ANON, event(2, { targetText: 'x'.repeat(40_000) }));
+    sender.flush();
+    await vi.waitFor(() => expect(calls).toHaveLength(2));
+    expect(calls.map((c) => c.keepalive)).toEqual([true, false]);
+  });
+
+  it('does not resend a keepalive request that is already in flight', async () => {
+    let release!: () => void;
+    fetchMock.mockImplementationOnce((url: string, init: RequestInit) => {
+      calls.push({ url, headers: {}, body: '', keepalive: init.keepalive === true });
+      return new Promise((resolve) => {
+        release = () => resolve({ status: 202, headers: new Headers() });
+      });
+    });
+    const { outbox, sender } = harness();
+    outbox.addEvent(S1, ANON, event(1));
+    outbox.addEvent(S1, ANON, event(2));
+    sender.flush();
+    await vi.waitFor(() => expect(calls).toHaveLength(1)); // in flight, keepalive
+    outbox.addEvent(S1, ANON, event(3)); // arrives after the send started
+    sender.pageHide();
+    await settle();
+    expect(sentIds(beaconBodies)).toEqual([event(3).clientEventId]);
+    release();
+    await vi.waitFor(() => expect(outbox.isEmpty).toBe(true));
+  });
+
+  it('skips the send if a beacon took its items while compressing', async () => {
+    const { outbox, sender, transport } = harness();
+    let finishCompressing!: () => void;
+    const prepare = transport.prepare.bind(transport);
+    vi.spyOn(transport, 'prepare').mockImplementationOnce(
+      (body) => new Promise((resolve) => (finishCompressing = () => resolve(prepare(body)))),
+    );
+    outbox.addEvent(S1, ANON, event(1));
+    sender.flush();
+    await vi.waitFor(() => expect(finishCompressing).toBeDefined());
+    sender.pageHide(); // beacons event 1 while the normal send is still compressing it
+    finishCompressing();
+    await settle();
+    await settle();
+    expect(sentIds(beaconBodies)).toEqual([event(1).clientEventId]);
+    expect(calls).toEqual([]); // no duplicate over fetch
+    expect(outbox.isEmpty).toBe(true);
+  });
+});
+
 describe('bounded queue', () => {
   it('drops the oldest replay chunks first, then the oldest events', () => {
     const dropped = vi.fn();

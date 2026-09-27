@@ -110,16 +110,30 @@ export class Outbox {
     }
   }
 
+  /** True while every item of `request` is still queued (nothing sent or evicted meanwhile). */
+  contains(request: Outgoing): boolean {
+    if (request.path === 'replay') return this.chunks.includes(request.chunk);
+    const queued = new Set(this.events);
+    return request.events.every((e) => queued.has(e));
+  }
+
   /**
    * Requests for a page-hide beacon within `budgetBytes` (UTF-8) in total. Most recent
    * events first, split per session and by budget; then replay chunks oldest first, stopping
    * at the first that does not fit (the replay tail is dropped rather than leaving a gap).
-   * Nothing is removed here; the caller removes what it actually sent.
+   * Items of `exclude` (a request already in flight) are skipped. Nothing is removed here;
+   * the caller removes what it actually sent.
    */
-  forBeacon(budgetBytes: number, byteLength: (s: string) => number): Outgoing[] {
+  forBeacon(
+    budgetBytes: number,
+    byteLength: (s: string) => number,
+    exclude: Outgoing | null = null,
+  ): Outgoing[] {
     const out: Outgoing[] = [];
     let remaining = budgetBytes;
-    const newestFirst = [...this.events].reverse();
+    const skipEvents = new Set(exclude?.path === 'events' ? exclude.events : []);
+    const skipChunk = exclude?.path === 'replay' ? exclude.chunk : null;
+    const newestFirst = [...this.events].reverse().filter((e) => !skipEvents.has(e));
     while (newestFirst.length > 0) {
       const head = newestFirst[0]!;
       const batch: QueuedEvent[] = [];
@@ -143,6 +157,7 @@ export class Outbox {
       if (newestFirst.some((e) => e.sessionId === head.sessionId)) break;
     }
     for (const chunk of this.chunks) {
+      if (chunk === skipChunk) continue;
       const size = byteLength(chunk.body);
       if (size > remaining) break;
       out.push({ path: 'replay', body: chunk.body, chunk });

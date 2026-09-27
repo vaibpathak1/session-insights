@@ -102,6 +102,8 @@ Masking happens in the browser, before anything is sent; the server redacts agai
   (uncompressed; falls back to `fetch` with `keepalive`). Browsers cap these bodies at ~64 KB
   per page, so the most recent events go first, then replay chunks oldest-first; the replay
   tail that does not fit is not sent (it stays queued in case the page comes back).
+  Normal sends of up to 32 KB use `fetch` with `keepalive`, so one in flight at page hide
+  survives the unload and is not sent again by the beacon.
 - Retries: network errors, `429` (honouring `Retry-After`) and `5xx`, with exponential
   backoff and full jitter (≤ 30 s). `400`, `413` and other `4xx` are dropped, not retried.
 - `401`/`403` (bad key or origin) stop the SDK for the page. In a browser the collector's

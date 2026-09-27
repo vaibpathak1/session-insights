@@ -1,7 +1,7 @@
 import { detach } from './guard';
 import type { Logger } from './log';
 import type { Outbox, Outgoing } from './outbox';
-import { backoffMs, type Transport } from './transport';
+import { backoffMs, KEEPALIVE_MAX_BYTES, utf8Length, type Transport } from './transport';
 
 /** Browsers cap in-flight beacon/keepalive bodies at ~64 KB per page; stay under it. */
 export const BEACON_BUDGET_BYTES = 60 * 1024;
@@ -20,9 +20,6 @@ export interface SenderHooks {
   onDrained(): void;
 }
 
-const encoder = typeof TextEncoder !== 'undefined' ? new TextEncoder() : null;
-const utf8Length = (s: string): number => (encoder ? encoder.encode(s).length : s.length * 3);
-
 /** Sends the outbox one request at a time, with retries (task 3.7). */
 export class Sender {
   private running = false;
@@ -32,6 +29,8 @@ export class Sender {
   private failures = 0;
   private everSucceeded = false;
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
+  /** The request on the wire with `keepalive`: it survives unload, so beacons skip it. */
+  private inflight: { request: Outgoing; bytes: number } | null = null;
 
   constructor(
     private readonly outbox: Outbox,
@@ -63,10 +62,16 @@ export class Sender {
     this.flush();
   }
 
-  /** Page hide: beacons within the ~64 KB budget; what does not fit stays queued. */
+  /**
+   * Page hide: beacons within the ~64 KB budget; what does not fit stays queued. A
+   * `keepalive` request already in flight is not resent, and its bytes count against the
+   * budget (browsers share one quota).
+   */
   pageHide(): void {
     if (this.stopped) return;
-    const planned = this.outbox.forBeacon(BEACON_BUDGET_BYTES, utf8Length);
+    const inflight = this.inflight;
+    const budget = BEACON_BUDGET_BYTES - (inflight ? inflight.bytes : 0);
+    const planned = this.outbox.forBeacon(budget, utf8Length, inflight?.request ?? null);
     let sent = 0;
     for (const request of planned) {
       if (!this.transport.beacon(request.path, request.body)) break;
@@ -76,7 +81,7 @@ export class Sender {
     const left = this.outbox.size;
     if (left.events > 0 || left.chunks > 0) {
       this.log.info(
-        `page hide: ${sent} beacon(s) sent; not sent (budget): ${left.events} event(s), ${left.chunks} replay chunk(s)`,
+        `page hide: ${sent} beacon(s) sent; still queued: ${left.events} event(s), ${left.chunks} replay chunk(s)`,
       );
     }
   }
@@ -98,7 +103,18 @@ export class Sender {
         if (this.final) this.stop();
         return;
       }
-      const result = await this.transport.send(request.path, request.body);
+      const prepared = await this.transport.prepare(request.body);
+      if (this.stopped) return;
+      // a page-hide beacon may have sent (some of) these items while compressing: re-plan
+      if (!this.outbox.contains(request)) continue;
+      const keepalive = prepared.bytes <= KEEPALIVE_MAX_BYTES;
+      this.inflight = keepalive ? { request, bytes: prepared.bytes } : null;
+      let result;
+      try {
+        result = await this.transport.post(request.path, prepared, keepalive);
+      } finally {
+        this.inflight = null;
+      }
       if (this.stopped) return;
       switch (result.kind) {
         case 'ok':
