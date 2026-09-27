@@ -4,8 +4,9 @@ Open-source, self-hostable session replay and product insights platform.
 Record user sessions, replay them, detect friction automatically, and let a local LLM
 triage problem sessions, with humans reviewing anything uncertain.
 
-> **Status:** Milestone M0 complete (local stack + build verified). Working towards M1: schemas (Phase 1) and the
-> collector API → Kafka (Phase 2) are done; nothing records sessions yet (SDK is Phase 3).
+> **Status:** Milestone M0 complete (local stack + build verified). Working towards M1: schemas (Phase 1), the
+> collector API → Kafka (Phase 2) and the browser SDK (Phase 3) are done; sessions are recorded and reach
+> Kafka, but nothing consumes them yet (event processing is next).
 > See [Roadmap](#roadmap).
 
 ## Architecture
@@ -92,6 +93,25 @@ to `POST /v1/replay`. Browser clients always send the key as `?k=`; the `X-SI-Ke
 for non-browser clients only. A browser `Origin` on the site's allow-list is required
 (ADR-0010).
 
+### Record a session with the SDK demo (Phase 3)
+
+With compose up, the dev tenant seeded once (above) and the collector running:
+
+```bash
+./scripts/dev-site-key.sh                       # rotates the dev key into examples/demo-site/.env.local
+(cd sdk && npm ci && npm run build)             # Node 24 (sdk/.nvmrc)
+(cd examples/demo-site && npm ci && npm run dev) # http://localhost:5173
+```
+
+Type, click and navigate on the demo page; batches arrive on `telemetry.events.v1` and
+`replay.chunks.v1`. Passwords, card fields, one-time codes and `data-si-block` content are
+never recorded; see [`sdk/README.md`](sdk/README.md). The end-to-end privacy test runs the
+same flow in Chromium and checks what reached Kafka:
+
+```bash
+./scripts/e2e-sdk.sh
+```
+
 ## Repository layout
 
 ```
@@ -99,7 +119,9 @@ docs/               product features, roadmap, requirements, ADRs, phase prompts
 infra/              config for local dependencies (Kafka topics, DB init, S3 identities)
 services/           Java services (Maven multi-module)
   platform-common/  shared contracts (topic names, event records)
-sdk/                browser SDK (TypeScript) — Phase 3
+sdk/                browser SDK (TypeScript)
+contracts/          wire contract fixtures shared by the SDK and collector tests
+examples/demo-site/ local demo page for the SDK
 dashboard/          analyst UI (React) — Phase 5+
 scripts/            developer tooling
 ```

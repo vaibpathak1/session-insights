@@ -38,8 +38,8 @@ User-facing features (F1–F15) and their acceptance criteria live in
 | FR-ING-1 | Collector accepts batched events over HTTPS (JSON, gzip), authenticated by site key + origin allow-list | 2 ✅ |
 | FR-ING-2 | Collector validates, stamps server time, and produces to Kafka keyed by `sessionId` | 2 ✅ |
 | FR-ING-3 | Per-tenant rate limiting with `429` + `Retry-After` | 2 ✅ (per site key, see ADR-0010) |
-| FR-SDK-1 | Browser SDK records via rrweb, batches, sends with `fetch keepalive` / `sendBeacon` on unload | 3 |
-| FR-SDK-2 | Privacy by default: all inputs masked, opt-in unmasking per selector, block-list for elements | 3 |
+| FR-SDK-1 | Browser SDK records via rrweb, batches, sends with `fetch keepalive` / `sendBeacon` on unload | 3 ✅ |
+| FR-SDK-2 | Privacy by default: all inputs masked, opt-in unmasking per selector, block-list for elements | 3 ✅ |
 | FR-PRC-1 | Events persisted to ClickHouse, replay chunks to object storage | 4 |
 | FR-PRC-2 | At-least-once delivery with deduplication by client event id; poison messages to DLT | 4 |
 | FR-SES-1 | Session closes after inactivity timeout (default 30 min) or explicit end | 5 |
