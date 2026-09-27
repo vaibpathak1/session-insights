@@ -29,6 +29,7 @@
     <modules>
         <module>services/platform-common</module>
         <module>services/platform-db</module>
+        <module>services/platform-domain</module>
         <module>services/collector-service</module>
         <module>services/event-processor</module>
         <module>services/analysis-worker</module>

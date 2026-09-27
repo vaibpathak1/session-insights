@@ -28,8 +28,12 @@ class ApiApplicationTests {
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
         registry.add("spring.datasource.url", postgres::getJdbcUrl);
-        registry.add("spring.datasource.username", postgres::getUsername);
-        registry.add("spring.datasource.password", postgres::getPassword);
+        registry.add("spring.datasource.username", () -> TestContainers.APP_USER);
+        registry.add("spring.datasource.password", () -> TestContainers.APP_PASSWORD);
+        registry.add("spring.flyway.user", postgres::getUsername);
+        registry.add("spring.flyway.password", postgres::getPassword);
+        registry.add("spring.flyway.placeholders.appUser", () -> TestContainers.APP_USER);
+        registry.add("spring.flyway.placeholders.appPassword", () -> TestContainers.APP_PASSWORD);
         registry.add("clickhouse.endpoint", () -> TestContainers.clickhouseEndpoint(clickhouse));
         registry.add("clickhouse.database", () -> TestContainers.DATABASE);
         registry.add("clickhouse.username", () -> TestContainers.USER);

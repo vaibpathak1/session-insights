@@ -11,6 +11,8 @@ public final class TestContainers {
     public static final String DATABASE = "insights";
     public static final String USER = "insights";
     public static final String PASSWORD = "insights_test_pw";
+    public static final String APP_USER = "insights_app";
+    public static final String APP_PASSWORD = "insights_app_test_pw";
     public static final int CLICKHOUSE_HTTP_PORT = 8123;
 
     private TestContainers() {

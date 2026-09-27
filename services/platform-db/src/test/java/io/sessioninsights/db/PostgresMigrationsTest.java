@@ -12,6 +12,9 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -31,6 +34,7 @@ class PostgresMigrationsTest {
         flyway = Flyway.configure()
                 .dataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())
                 .locations("classpath:db/migration/postgres")
+                .placeholders(Map.of("appUser", TestContainers.APP_USER, "appPassword", TestContainers.APP_PASSWORD))
                 .load();
         firstRunExecuted = flyway.migrate().migrationsExecuted;
     }
@@ -71,12 +75,82 @@ class PostgresMigrationsTest {
 
     @Test
     void insightEmbeddingHasHnswCosineIndex() throws SQLException {
-        try (Connection c = DriverManager.getConnection(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword());
+        try (Connection c = owner();
              var rs = c.createStatement().executeQuery(
                      "SELECT indexdef FROM pg_indexes WHERE indexname = 'session_insight_embedding_hnsw'")) {
             assertThat(rs.next()).isTrue();
             assertThat(rs.getString(1)).contains("USING hnsw").contains("vector_cosine_ops");
         }
+    }
+
+    @Test
+    void everyTenantScopedTableForcesRowLevelSecurity() throws SQLException {
+        List<String> unprotected = new ArrayList<>();
+        try (Connection c = owner(); var rs = c.createStatement().executeQuery("""
+                SELECT c.relname, c.relrowsecurity, c.relforcerowsecurity
+                FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+                WHERE n.nspname = 'public' AND c.relkind = 'r'
+                  AND (c.relname = 'tenant' OR EXISTS (SELECT 1 FROM pg_attribute a
+                       WHERE a.attrelid = c.oid AND a.attname = 'tenant_id' AND NOT a.attisdropped))
+                """)) {
+            int tables = 0;
+            while (rs.next()) {
+                tables++;
+                if (!rs.getBoolean(2) || !rs.getBoolean(3)) {
+                    unprotected.add(rs.getString(1));
+                }
+            }
+            assertThat(tables).isEqualTo(12);
+        }
+        assertThat(unprotected).isEmpty();
+    }
+
+    @Test
+    void appRoleSeesOnlyItsTenantAndCannotRewriteAudit() throws SQLException {
+        UUID tenantA = UUID.randomUUID();
+        UUID tenantB = UUID.randomUUID();
+        for (UUID t : List.of(tenantA, tenantB)) {
+            UUID site = UUID.randomUUID();
+            exec("INSERT INTO tenant (id, name) VALUES ('%s', 'rls')".formatted(t));
+            exec("INSERT INTO site (id, tenant_id, name) VALUES ('%s', '%s', 's')".formatted(site, t));
+            UUID session = UUID.randomUUID();
+            exec(("INSERT INTO user_session (id, tenant_id, site_id, anonymous_id, started_at, last_active_at)"
+                    + " VALUES ('%s', '%s', '%s', 'a', now(), now())").formatted(session, t, site));
+            exec("INSERT INTO review_event (tenant_id, session_id, action) VALUES ('%s', '%s', 'NOTE')".formatted(t, session));
+        }
+
+        try (Connection app = DriverManager.getConnection(postgres.getJdbcUrl(), TestContainers.APP_USER, TestContainers.APP_PASSWORD);
+             Statement s = app.createStatement()) {
+            assertThat(count(s, "SELECT count(*) FROM user_session")).as("no tenant set").isZero();
+
+            app.setAutoCommit(false);
+            s.execute("SELECT set_config('app.tenant_id', '%s', true)".formatted(tenantA));
+            assertThat(count(s, "SELECT count(*) FROM user_session")).isEqualTo(1);
+            assertThat(count(s, "SELECT count(*) FROM user_session WHERE tenant_id = '%s'".formatted(tenantB))).isZero();
+            assertThatThrownBy(() -> s.execute(("INSERT INTO tenant (id, name) VALUES ('%s', 'x')").formatted(UUID.randomUUID())))
+                    .isInstanceOf(SQLException.class).hasMessageContaining("row-level security");
+            app.rollback();
+
+            s.execute("SELECT set_config('app.tenant_id', '%s', true)".formatted(tenantA));
+            assertThatThrownBy(() -> s.execute("UPDATE review_event SET note = 'x'"))
+                    .isInstanceOf(SQLException.class).hasMessageContaining("permission denied");
+            app.rollback();
+
+            // after the transaction the setting reads as '' and must still fail closed, not error
+            assertThat(count(s, "SELECT count(*) FROM user_session")).isZero();
+            app.commit();
+        }
+    }
+
+    static long count(Statement s, String sql) throws SQLException {
+        try (var rs = s.executeQuery(sql)) {
+            rs.next();
+            return rs.getLong(1);
+        }
+    }
+
+    static Connection owner() throws SQLException {
+        return DriverManager.getConnection(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword());
     }
 
     static void assertCheckViolation(String sql) {
@@ -86,8 +160,7 @@ class PostgresMigrationsTest {
     }
 
     static void exec(String sql) throws SQLException {
-        try (Connection c = DriverManager.getConnection(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword());
-             Statement s = c.createStatement()) {
+        try (Connection c = owner(); Statement s = c.createStatement()) {
             s.execute(sql);
         }
     }
