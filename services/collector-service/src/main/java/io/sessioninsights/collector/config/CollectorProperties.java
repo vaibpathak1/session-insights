@@ -11,7 +11,9 @@ import java.time.Duration;
 public record CollectorProperties(
         @DefaultValue Limits limits,
         @DefaultValue KeyCache keyCache,
-        @DefaultValue RateLimit rateLimit) {
+        @DefaultValue RateLimit rateLimit,
+        // upper bound on waiting for Kafka acks; must exceed spring.kafka delivery.timeout.ms
+        @DefaultValue("10s") Duration kafkaSendTimeout) {
 
     /** Request limits (task 2.6). Body sizes are measured after decompression. */
     public record Limits(

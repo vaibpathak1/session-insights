@@ -12,6 +12,24 @@ spring:
     password: ${POSTGRES_COLLECTOR_PASSWORD:insights_collector_dev_pw}
     hikari:
       maximum-pool-size: 4    # lookups are cached; the pool only sees cache misses
+  # ADR-0004 producer settings. A 202 is sent only after every record of the request is
+  # acknowledged by all in-sync replicas; the timeouts keep an unreachable Kafka a fast 503.
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.ByteArraySerializer
+      acks: all
+      compression-type: zstd
+      batch-size: 65536
+      properties:
+        enable.idempotence: true
+        linger.ms: 20
+        max.block.ms: 2000          # metadata wait when Kafka is unreachable
+        request.timeout.ms: 3000
+        delivery.timeout.ms: 5000   # >= linger.ms + request.timeout.ms
+        # replay chunks are up to 4 MB (topic max.message.bytes) plus the envelope
+        max.request.size: 4259840
 
 server:
   port: 8081
