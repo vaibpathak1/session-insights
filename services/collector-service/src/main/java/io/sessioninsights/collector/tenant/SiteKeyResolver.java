@@ -45,11 +45,13 @@ public class SiteKeyResolver implements DisposableBean {
                 .buildAsync();
     }
 
-    /** Resolves a plaintext site key; empty if unknown, revoked or its site/tenant is inactive. */
-    public Optional<ResolvedSite> resolve(String plaintextKey) {
-        String hash = SiteKeyHash.of(plaintextKey);
+    /**
+     * Resolves a site key by its {@link SiteKeyHash}; empty if unknown, revoked, or its site
+     * or tenant is inactive. Database failures propagate and are not cached.
+     */
+    public Optional<ResolvedSite> resolve(String keyHash) {
         try {
-            return cache.get(hash, (key, exec) -> CompletableFuture.supplyAsync(() -> lookup.find(key), exec)).join();
+            return cache.get(keyHash, (key, exec) -> CompletableFuture.supplyAsync(() -> lookup.find(key), exec)).join();
         } catch (CompletionException e) {
             // failed lookups are not cached; rethrow the cause (e.g. DataAccessException)
             if (e.getCause() instanceof RuntimeException cause) {
