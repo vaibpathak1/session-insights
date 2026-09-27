@@ -34,6 +34,24 @@ spring:
 server:
   port: 8081
 
+# Ingestion limits and tuning (CollectorProperties); the values below are the defaults.
+collector:
+  limits:
+    max-events: 500
+    max-events-body: 1MB       # decompressed
+    max-replay-body: 4MB       # decompressed; = replay.chunks.v1 max.message.bytes
+    max-event-age: 24h         # older client timestamps are dropped and counted
+    max-clock-skew: 5m         # so are timestamps further in the future
+  key-cache:                   # ADR-0011: revocation takes effect within positive-ttl
+    positive-ttl: 60s
+    negative-ttl: 10s
+    maximum-size: 10000
+  rate-limit:                  # per site key, per instance: 50 req/s, bursts of 100
+    capacity: 100
+    refill-tokens: 50
+    refill-period: 1s
+  kafka-send-timeout: 10s
+
 management:
   endpoints:
     web:

@@ -7,7 +7,7 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.util.Map;
 
-/** Container factories shared by platform-db, platform-domain and api-service tests. */
+/** Container factories shared by platform-db, platform-domain, api-service and collector-service tests. */
 public final class TestContainers {
 
     public static final String DATABASE = "insights";

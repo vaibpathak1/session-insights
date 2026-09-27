@@ -71,6 +71,25 @@ Browse Kafka: `docker compose --profile tools up -d` → http://localhost:8085.
 
 Reset everything: `docker compose down -v`.
 
+### Run the collector (Phase 2)
+
+```bash
+mvn -q install -DskipTests
+# once: api-service applies the migrations (creates the insights_collector role) and,
+# with the dev profile, seeds a tenant/site and prints the dev site key once
+mvn -q -pl services/api-service spring-boot:run -Dspring-boot.run.profiles=dev
+# then, in another terminal
+mvn -q -pl services/collector-service spring-boot:run      # http://localhost:8081
+
+curl -i 'http://localhost:8081/v1/events?k=<dev site key>' \
+  -H 'Origin: http://localhost:3000' -H 'Content-Type: text/plain' \
+  -d '{"sessionId":"'$(uuidgen)'","events":[{"clientEventId":"'$(uuidgen)'","type":"CLICK","ts":'$(date +%s000)'}]}'
+```
+
+`202` means every event was acknowledged by Kafka (`telemetry.events.v1`). Replay chunks go
+to `POST /v1/replay`. The key may also be sent as `X-SI-Key`; a browser `Origin` on the
+site's allow-list is required (ADR-0011).
+
 ## Repository layout
 
 ```
