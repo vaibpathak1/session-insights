@@ -4,6 +4,14 @@ spring:
   threads:
     virtual:
       enabled: true   # ADR-0001: virtual threads for all blocking I/O
+  # Defaults match .env.example (local development only); override via environment.
+  # The collector role may only EXECUTE resolve_site_key(): no table privileges (ADR-0011).
+  datasource:
+    url: ${POSTGRES_URL:jdbc:postgresql://localhost:5432/insights}
+    username: ${POSTGRES_COLLECTOR_USER:insights_collector}
+    password: ${POSTGRES_COLLECTOR_PASSWORD:insights_collector_dev_pw}
+    hikari:
+      maximum-pool-size: 4    # lookups are cached; the pool only sees cache misses
 
 server:
   port: 8081

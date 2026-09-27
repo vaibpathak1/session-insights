@@ -2,9 +2,11 @@ package io.sessioninsights.collector;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
 
 /** Stateless ingestion edge: receives SDK batches, validates, produces to Kafka. */
 @SpringBootApplication
+@ConfigurationPropertiesScan
 public class CollectorApplication {
 
     public static void main(String[] args) {
