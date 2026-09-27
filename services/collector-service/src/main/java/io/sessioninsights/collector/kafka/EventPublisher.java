@@ -1,5 +1,7 @@
 package io.sessioninsights.collector.kafka;
 
+import io.micrometer.core.instrument.Timer;
+import io.sessioninsights.collector.CollectorMetrics;
 import io.sessioninsights.collector.config.CollectorProperties;
 import io.sessioninsights.collector.ingest.IngestException;
 import io.sessioninsights.collector.ingest.Rejection;
@@ -35,16 +37,23 @@ public class EventPublisher {
 
     private final KafkaTemplate<String, byte[]> template;
     private final Duration sendTimeout;
+    private final CollectorMetrics metrics;
 
-    public EventPublisher(KafkaTemplate<String, byte[]> template, CollectorProperties properties) {
+    public EventPublisher(KafkaTemplate<String, byte[]> template, CollectorProperties properties,
+                          CollectorMetrics metrics) {
         this.template = template;
         this.sendTimeout = properties.kafkaSendTimeout();
+        this.metrics = metrics;
     }
 
-    public void publish(List<ProducerRecord<String, byte[]>> records) {
+    /** Sends records for one topic and waits for all acks. */
+    public void publish(String topic, List<ProducerRecord<String, byte[]>> records) {
+        Timer.Sample sample = metrics.startKafkaSend();
+        boolean success = false;
         try {
             CompletableFuture<?>[] acks = records.stream().map(template::send).toArray(CompletableFuture[]::new);
             CompletableFuture.allOf(acks).get(sendTimeout.toMillis(), TimeUnit.MILLISECONDS);
+            success = true;
         } catch (ExecutionException e) {
             if (hasCause(e, RecordTooLargeException.class)) {
                 throw new IngestException(Rejection.TOO_LARGE);
@@ -55,6 +64,8 @@ public class EventPublisher {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw unavailable(e);
+        } finally {
+            metrics.stopKafkaSend(sample, topic, success);
         }
     }
 
