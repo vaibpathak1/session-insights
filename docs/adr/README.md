@@ -14,5 +14,6 @@ that supersedes the old one; do not edit history.
 | [0007](0007-frontend-stack.md) | React dashboard, framework-free TypeScript SDK | Accepted |
 | [0008](0008-multi-tenancy.md) | Shared-schema multi-tenancy with RLS | Accepted |
 | [0009](0009-license.md) | Apache License 2.0 | Accepted |
+| [0011](0011-edge-tenant-resolution.md) | Tenant resolution at the ingestion edge (SECURITY DEFINER lookup, collector role, key cache) | Accepted |
 
 Template: Context → Decision → Consequences → Alternatives considered.
