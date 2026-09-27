@@ -27,7 +27,35 @@ export interface Recorder {
 /** Starts rrweb with the SDK's privacy settings. Returns null if rrweb could not start. */
 export function startRecorder(options: RecorderOptions): Recorder | null {
   rememberSensitiveFields(document);
-  const stop = record<RrwebEvent>({
+  let stop: (() => void) | undefined;
+  try {
+    stop = startRrweb(options);
+  } catch (e) {
+    options.onError(e);
+    return null;
+  }
+  if (!stop) return null;
+  const stopRrweb = stop;
+  return {
+    stop: () => {
+      try {
+        stopRrweb();
+      } catch (e) {
+        options.onError(e);
+      }
+    },
+    takeFullSnapshot: () => {
+      try {
+        record.takeFullSnapshot(true);
+      } catch (e) {
+        options.onError(e);
+      }
+    },
+  };
+}
+
+function startRrweb(options: RecorderOptions): (() => void) | undefined {
+  return record<RrwebEvent>({
     emit: options.emit,
     // FR-SDK-2: every input masked; unmasking is per element via maskInputFn
     maskAllInputs: true,
@@ -47,9 +75,4 @@ export function startRecorder(options: RecorderOptions): Recorder | null {
       return true; // handled: rrweb must not rethrow into the page
     },
   });
-  if (!stop) return null;
-  return {
-    stop,
-    takeFullSnapshot: () => record.takeFullSnapshot(true),
-  };
 }

@@ -110,3 +110,32 @@ Masking happens in the browser, before anything is sent; the server redacts agai
 - Everything waiting to be sent is held in memory, bounded at 2 MB; when full, the oldest
   replay data is dropped first (then the oldest events), and a new full snapshot is taken
   once the queue drains so replay can resume.
+
+## Content Security Policy
+
+If your site sends a CSP header, allow the SDK to reach the collector:
+
+```
+Content-Security-Policy: connect-src 'self' https://collect.example.com
+```
+
+`connect-src` covers `fetch` and `navigator.sendBeacon`. With a script tag, also allow the
+SDK's origin in `script-src` (or self-host the IIFE file). The SDK needs no `unsafe-eval`
+and injects no inline scripts. If the collector is blocked by CSP, requests fail like
+network errors and the SDK stops itself for the page after a few attempts.
+
+The collector must also list your site's origin in the site's allowed origins
+(ADR-0010); otherwise it refuses the requests.
+
+## Do no harm
+
+- Every public method and every listener or wrapper the SDK installs is guarded: nothing
+  the SDK does can throw into the page. Patched functions (`console.error`,
+  `history.pushState/replaceState`) always call the original, keep its return value and
+  errors, and are restored on `shutdown()` unless something else wrapped them afterwards.
+- Error capture uses listeners (never replaces `window.onerror`), so the page's handlers run
+  unchanged. The SDK never captures its own errors, and logs only with `console.warn/info`
+  when `debug` is on.
+- Work is kept off the page's hot path: events are serialised once as they arrive, batches
+  are assembled in `requestIdleCallback`, and compression runs in `CompressionStream`.
+- Unsampled sessions install nothing but a few passive activity listeners.

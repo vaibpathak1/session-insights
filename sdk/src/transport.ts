@@ -65,11 +65,19 @@ export class Transport {
    */
   beacon(path: 'events' | 'replay', body: string): boolean {
     const url = this.url(path);
-    const nav = typeof navigator !== 'undefined' ? navigator : undefined;
-    if (nav && typeof nav.sendBeacon === 'function') {
-      return nav.sendBeacon(url, new Blob([body], { type: 'text/plain;charset=UTF-8' }));
+    try {
+      const nav = typeof navigator !== 'undefined' ? navigator : undefined;
+      if (nav && typeof nav.sendBeacon === 'function') {
+        return nav.sendBeacon(url, new Blob([body], { type: 'text/plain;charset=UTF-8' }));
+      }
+      if (typeof fetch !== 'function') return false;
+      return this.keepalive(url, body);
+    } catch {
+      return false; // some browsers throw instead of returning false
     }
-    if (typeof fetch !== 'function') return false;
+  }
+
+  private keepalive(url: string, body: string): boolean {
     fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
