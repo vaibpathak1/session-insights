@@ -57,12 +57,13 @@ public class IngestService {
     public IngestResult events(IngestRequest request) {
         // With the key in a header or query parameter, refuse before reading the body.
         ResolvedSite site = request.key() != null ? authorize(request.key(), request) : null;
-        EventBatch batch = validator.parseEvents(readBody(request, limits.maxEventsBody().toBytes()));
+        BatchValidator.ParsedEvents parsed = validator.parseEvents(readBody(request, limits.maxEventsBody().toBytes()));
+        EventBatch batch = parsed.batch();
         if (site == null) {
             site = authorize(batch.siteKey(), request);
         }
         Instant receivedAt = clock.instant();
-        BatchValidator.ValidatedEvents validated = validator.validate(batch, receivedAt);
+        BatchValidator.ValidatedEvents validated = validator.validate(parsed, receivedAt);
 
         String anonymousId = validator.anonymousId(batch);
         String sdkVersion = validator.sdkVersion(batch);
@@ -76,8 +77,9 @@ public class IngestService {
             publisher.publish(Topics.TELEMETRY_EVENTS, records);
         }
         metrics.accepted(records.size());
+        metrics.dropped(CollectorMetrics.DROPPED_UNKNOWN_TYPE, validated.droppedUnknownType());
         metrics.dropped(CollectorMetrics.DROPPED_TS_OUT_OF_WINDOW, validated.droppedOutOfWindow());
-        return new IngestResult(records.size(), validated.droppedOutOfWindow());
+        return new IngestResult(records.size(), validated.dropped());
     }
 
     public IngestResult replay(IngestRequest request) {

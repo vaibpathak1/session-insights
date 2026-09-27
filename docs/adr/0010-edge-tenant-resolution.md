@@ -1,4 +1,4 @@
-# ADR-0011: Tenant resolution at the ingestion edge
+# ADR-0010: Tenant resolution at the ingestion edge
 
 **Status:** Accepted · 2026-09
 
@@ -31,11 +31,24 @@ privilege of any component. It must never trust tenant or site ids sent by the c
 5. **Rate limiting is per key and per instance** (Bucket4j, in memory). With N collector
    instances, the effective limit is up to N times the configured one. A shared limit
    (e.g. Bucket4j on PostgreSQL or Redis) is deferred until multi-instance deployments need it.
-6. The site key may arrive as the `?k=` query parameter, because `navigator.sendBeacon`
-   cannot set headers. Query strings can end up in proxy access logs. A site key is public
-   by design (it ships in page JavaScript) and only identifies a site. The origin
-   allow-list, rate limits and server-side redaction are the controls, so the exposure is
-   accepted. The collector itself never logs keys.
+6. **Browser clients always send the site key as the `?k=` query parameter.** A CORS
+   preflight cannot carry header values, so a browser request that put the key in
+   `X-SI-Key` could never be authorized at preflight; `navigator.sendBeacon` cannot set
+   headers at all. The SDK therefore sends `?k=` with a `text/plain` body and no custom
+   headers, which is a CORS "simple request" and needs no preflight. **`X-SI-Key` is for
+   non-browser clients only** (server-side senders, tools, tests). A key inside the JSON
+   body is a last-resort fallback.
+7. **CORS is per site.** The collector answers preflights for `/v1/*` itself: it resolves
+   `?k=`, and only if the `Origin` is on that site's allow-list does it echo the origin
+   (never `*`, never credentials), with `Access-Control-Allow-Methods: POST`,
+   `Access-Control-Allow-Headers: Content-Type, Content-Encoding, X-SI-Key` and
+   `Access-Control-Max-Age: 600`, so browsers cache a successful preflight for 10 minutes.
+   Otherwise it returns a bare `403`. Every response carries `Vary: Origin`. Allow-list
+   entries are exact origins or `scheme://host:*` (any port).
+8. Query strings can end up in proxy access logs. A site key is public by design (it ships
+   in page JavaScript) and only identifies a site. The origin allow-list, rate limits and
+   server-side redaction are the controls, so the exposure is accepted. The collector
+   itself never logs keys: it masks `k` in the query string before any request logging.
 
 ## Consequences
 - The only data that the edge can read before tenant context is exactly what it needs.

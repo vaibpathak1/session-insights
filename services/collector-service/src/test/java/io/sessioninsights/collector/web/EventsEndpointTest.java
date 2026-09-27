@@ -149,6 +149,7 @@ class EventsEndpointTest extends CollectorIntegrationTest {
         assertThat(allowed.headers().firstValue("Access-Control-Allow-Origin")).hasValue("http://localhost:5173");
         assertThat(allowed.headers().firstValue("Access-Control-Allow-Methods")).hasValue("POST");
         assertThat(allowed.headers().firstValue("Access-Control-Allow-Headers")).hasValue("Content-Type, Content-Encoding, X-SI-Key");
+        assertThat(allowed.headers().firstValue("Access-Control-Max-Age")).hasValue("600");
         assertThat(allowed.headers().firstValue("Access-Control-Allow-Credentials")).isEmpty();
         assertThat(allowed.headers().firstValue("Vary")).hasValue("Origin");
 
@@ -187,21 +188,39 @@ class EventsEndpointTest extends CollectorIntegrationTest {
     }
 
     @Test
-    void invalidUuidOrUnknownTypeIs400AndNothingIsProduced() {
+    void invalidUuidIs400AndNothingIsProduced() {
         SiteFixture site = newSite();
         UUID session = UUID.randomUUID();
 
         HttpResponse<String> badSession = post("/v1/events").key(site)
                 .body(batchJson(UUID.randomUUID(), eventJson(UUID.randomUUID(), now())).replaceFirst("\"sessionId\":\"[^\"]+\"", "\"sessionId\":\"123\""))
                 .send();
-        HttpResponse<String> badType = post("/v1/events").key(site)
-                .body(batchJson(session, eventJson(UUID.randomUUID(), now()), eventJson(UUID.randomUUID(), now()).replace("CLICK", "TELEPORT")))
+        HttpResponse<String> badEventId = post("/v1/events").key(site)
+                .body(batchJson(session, eventJson(UUID.randomUUID(), now()), eventJson(UUID.randomUUID(), now()).replaceFirst("\"clientEventId\":\"[^\"]+\"", "\"clientEventId\":\"e-1\"")))
                 .send();
 
         assertThat(badSession.statusCode()).isEqualTo(400);
         assertThat(badSession.body()).isEqualTo("{\"error\":\"invalid\"}");
-        assertThat(badType.statusCode()).isEqualTo(400);
+        assertThat(badEventId.statusCode()).isEqualTo(400);
         assertThat(CollectorTestInfra.records(Topics.TELEMETRY_EVENTS, session.toString(), 0)).isEmpty();
+    }
+
+    @Test
+    void unknownEventTypeIsDroppedAndCountedWhileTheRestIsAccepted() {
+        SiteFixture site = newSite();
+        UUID session = UUID.randomUUID();
+        UUID known = UUID.randomUUID();
+        double droppedBefore = dropped(CollectorMetrics.DROPPED_UNKNOWN_TYPE);
+
+        HttpResponse<String> response = post("/v1/events").key(site)
+                .body(batchJson(session, eventJson(known, now()), eventJson(UUID.randomUUID(), now()).replace("CLICK", "TELEPORT")))
+                .send();
+
+        assertThat(response.statusCode()).isEqualTo(202);
+        assertThat(response.body()).isEqualTo("{\"accepted\":1,\"dropped\":1}");
+        assertThat(dropped(CollectorMetrics.DROPPED_UNKNOWN_TYPE) - droppedBefore).isEqualTo(1.0);
+        assertThat(CollectorTestInfra.records(Topics.TELEMETRY_EVENTS, session.toString(), 1))
+                .extracting(r -> envelope(r).event().clientEventId()).containsExactly(known);
     }
 
     @Test
@@ -219,7 +238,7 @@ class EventsEndpointTest extends CollectorIntegrationTest {
         SiteFixture site = newSite();
         UUID session = UUID.randomUUID();
         UUID fresh = UUID.randomUUID();
-        double droppedBefore = dropped();
+        double droppedBefore = dropped(CollectorMetrics.DROPPED_TS_OUT_OF_WINDOW);
 
         HttpResponse<String> response = post("/v1/events").key(site).body(batchJson(session,
                 eventJson(fresh, now()),
@@ -228,7 +247,7 @@ class EventsEndpointTest extends CollectorIntegrationTest {
 
         assertThat(response.statusCode()).isEqualTo(202);
         assertThat(response.body()).isEqualTo("{\"accepted\":1,\"dropped\":2}");
-        assertThat(dropped() - droppedBefore).isEqualTo(2.0);
+        assertThat(dropped(CollectorMetrics.DROPPED_TS_OUT_OF_WINDOW) - droppedBefore).isEqualTo(2.0);
         assertThat(CollectorTestInfra.records(Topics.TELEMETRY_EVENTS, session.toString(), 1))
                 .extracting(r -> envelope(r).event().clientEventId()).containsExactly(fresh);
     }
@@ -254,8 +273,8 @@ class EventsEndpointTest extends CollectorIntegrationTest {
         assertThat(e.url()).isEqualTo("http://localhost:3000/pay?email=%5Bemail%5D");
     }
 
-    private double dropped() {
-        var counter = meters.find(CollectorMetrics.EVENTS_DROPPED).tag("reason", CollectorMetrics.DROPPED_TS_OUT_OF_WINDOW).counter();
+    private double dropped(String reason) {
+        var counter = meters.find(CollectorMetrics.EVENTS_DROPPED).tag("reason", reason).counter();
         return counter == null ? 0 : counter.count();
     }
 

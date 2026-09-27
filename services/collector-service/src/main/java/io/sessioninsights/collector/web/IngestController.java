@@ -59,7 +59,10 @@ public class IngestController {
         return ResponseEntity.accepted().body(pipeline.apply(ingest));
     }
 
-    /** Header first, then {@code ?k=} (beacons cannot set headers); the body is the last resort. */
+    /**
+     * Header first ({@code X-SI-Key}, non-browser clients only), then {@code ?k=} (how browser
+     * clients must send it, ADR-0010); the body is the last resort.
+     */
     private static String siteKey(HttpServletRequest request) {
         String header = request.getHeader(CorsHeaders.KEY_HEADER);
         if (header != null && !header.isBlank()) {

@@ -11,7 +11,7 @@ import java.time.Duration;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Token bucket per site key, in memory, per collector instance (ADR-0011). Buckets use
+ * Token bucket per site key, in memory, per collector instance (ADR-0010). Buckets use
  * Bucket4j's default lock-free strategy (no {@code synchronized}, no virtual-thread pinning)
  * and are evicted when a key has been idle for a while.
  */

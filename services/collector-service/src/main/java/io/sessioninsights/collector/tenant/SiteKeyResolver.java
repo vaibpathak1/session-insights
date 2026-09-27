@@ -16,7 +16,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * Site key → tenant/site, cached in process (ADR-0011). Known keys are cached for the
+ * Site key → tenant/site, cached in process (ADR-0010). Known keys are cached for the
  * positive TTL, unknown or revoked keys for the shorter negative TTL, so random keys cannot
  * hammer the database. Concurrent misses for one key share a single lookup.
  * <p>

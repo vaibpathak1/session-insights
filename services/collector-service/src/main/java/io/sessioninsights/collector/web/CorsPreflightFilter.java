@@ -19,8 +19,9 @@ import java.util.Optional;
  * Answers CORS preflights for {@code /v1/*} before Spring MVC's generic CORS handling.
  * A preflight cannot carry {@code X-SI-Key}, so the site is identified by {@code ?k=}; the
  * origin is echoed only when it is on that site's allow-list. Anything else gets a bare
- * {@code 403} and the browser blocks the request. SDKs that send {@code text/plain} with
- * {@code ?k=} and no custom headers never trigger a preflight at all.
+ * {@code 403} and the browser blocks the request. Browser clients must always send the key
+ * as {@code ?k=} (ADR-0010); with a {@code text/plain} body and no custom headers they
+ * never trigger a preflight at all. A successful preflight is cacheable for 600 s.
  */
 @Component
 public class CorsPreflightFilter extends OncePerRequestFilter {

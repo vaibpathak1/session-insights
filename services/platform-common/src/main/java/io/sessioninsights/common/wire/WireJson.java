@@ -13,7 +13,8 @@ public final class WireJson {
             // newer SDKs may add fields; older collectors ignore them
             .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
             .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
-            // an unknown event type is a contract violation, not a null
+            // an unknown event type never binds as null; the collector drops such events
+            // before binding and counts them (si.collector.events.dropped{reason=unknown_type})
             .disable(EnumFeature.READ_UNKNOWN_ENUM_VALUES_AS_NULL)
             .enable(EnumFeature.FAIL_ON_NUMBERS_FOR_ENUMS)
             // parse errors must never echo payload content into logs or responses

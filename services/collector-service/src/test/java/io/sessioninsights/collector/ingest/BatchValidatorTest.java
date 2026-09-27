@@ -1,7 +1,6 @@
 package io.sessioninsights.collector.ingest;
 
 import io.sessioninsights.collector.config.CollectorProperties;
-import io.sessioninsights.common.wire.EventBatch;
 import io.sessioninsights.common.wire.ReplayBatch;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.context.properties.bind.Binder;
@@ -28,7 +27,7 @@ class BatchValidatorTest {
     @Test
     void outOfWindowTimestampsAreDroppedNotRejected() {
         long now = NOW.toEpochMilli();
-        EventBatch batch = validator.parseEvents(batch(
+        var batch = validator.parseEvents(batch(
                 event(now),
                 event(now - Duration.ofHours(24).toMillis() - 1),
                 event(now + Duration.ofMinutes(5).toMillis() + 1),
@@ -38,6 +37,35 @@ class BatchValidatorTest {
 
         assertThat(result.accepted()).hasSize(2);
         assertThat(result.droppedOutOfWindow()).isEqualTo(2);
+        assertThat(result.droppedUnknownType()).isZero();
+    }
+
+    @Test
+    void unknownEventTypesAreDroppedNotRejected() {
+        long now = NOW.toEpochMilli();
+        var parsed = validator.parseEvents(batch(
+                event(now),
+                event(now).replace("CLICK", "TELEPORT"),
+                event(now).replace("CLICK", "click"),   // enum names are case-sensitive
+                event(now - Duration.ofHours(25).toMillis())));
+
+        var result = validator.validate(parsed, NOW);
+
+        assertThat(parsed.totalEvents()).isEqualTo(4);
+        assertThat(result.accepted()).hasSize(1);
+        assertThat(result.droppedUnknownType()).isEqualTo(2);
+        assertThat(result.droppedOutOfWindow()).isEqualTo(1);
+        assertThat(result.dropped()).isEqualTo(3);
+    }
+
+    @Test
+    void batchOfOnlyUnknownTypesIsAcceptedWithNothingToSend() {
+        var parsed = validator.parseEvents(batch(event(NOW.toEpochMilli()).replace("CLICK", "TELEPORT")));
+
+        var result = validator.validate(parsed, NOW);
+
+        assertThat(result.accepted()).isEmpty();
+        assertThat(result.droppedUnknownType()).isEqualTo(1);
     }
 
     @Test
@@ -47,8 +75,12 @@ class BatchValidatorTest {
         assertRejected(() -> validator.parseEvents(bytes("{\"sessionId\":\"not-a-uuid\",\"events\":[]}")), Rejection.INVALID);
         assertRejected(() -> validator.parseEvents(bytes("{\"sessionId\":\"" + sid
                 + "\",\"events\":[{\"clientEventId\":\"x\",\"type\":\"CLICK\",\"ts\":1}]}")), Rejection.INVALID);
+        // a missing or non-string type is structural, unlike an unknown one
         assertRejected(() -> validator.parseEvents(bytes("{\"sessionId\":\"" + sid
-                + "\",\"events\":[{\"clientEventId\":\"" + UUID.randomUUID() + "\",\"type\":\"TELEPORT\",\"ts\":1}]}")),
+                + "\",\"events\":[{\"clientEventId\":\"" + UUID.randomUUID() + "\",\"type\":7,\"ts\":1}]}")),
+                Rejection.INVALID);
+        assertRejected(() -> validator.validate(validator.parseEvents(bytes("{\"sessionId\":\"" + sid
+                + "\",\"events\":[{\"clientEventId\":\"" + UUID.randomUUID() + "\",\"ts\":" + now + "}]}")), NOW),
                 Rejection.INVALID);
         assertRejected(() -> validator.parseEvents(bytes("{not json")), Rejection.INVALID);
         assertRejected(() -> validator.validate(validator.parseEvents(bytes("{\"sessionId\":\"" + sid + "\",\"events\":[]}")), NOW),
@@ -64,7 +96,16 @@ class BatchValidatorTest {
     @Test
     void tooManyEventsIsTooLarge() {
         String[] events = IntStream.range(0, 501).mapToObj(i -> event(NOW.toEpochMilli())).toArray(String[]::new);
-        EventBatch batch = validator.parseEvents(batch(events));
+        var batch = validator.parseEvents(batch(events));
+
+        assertRejected(() -> validator.validate(batch, NOW), Rejection.TOO_LARGE);
+    }
+
+    @Test
+    void unknownTypesStillCountTowardsTheEventLimit() {
+        String[] events = IntStream.range(0, 501).mapToObj(i -> event(NOW.toEpochMilli()).replace("CLICK", "TELEPORT"))
+                .toArray(String[]::new);
+        var batch = validator.parseEvents(batch(events));
 
         assertRejected(() -> validator.validate(batch, NOW), Rejection.TOO_LARGE);
     }
@@ -72,20 +113,20 @@ class BatchValidatorTest {
     @Test
     void redactsThenTruncates() {
         String longText = "x".repeat(1020) + " jane@example.com";
-        EventBatch batch = validator.parseEvents(bytes("""
+        var parsed = validator.parseEvents(bytes("""
                 {"sessionId":"%s","anonymousId":"%s","events":[{"clientEventId":"%s","type":"ERROR_CLICK","ts":%d,
                  "url":"https://shop.test/pay?email=jane%%40example.com","targetText":"%s",
                  "errorMessage":"card 4111 1111 1111 1111 declined","errorStack":"%s"}]}
                 """.formatted(UUID.randomUUID(), "a".repeat(300), UUID.randomUUID(), NOW.toEpochMilli(), longText,
                 "s".repeat(10_000))));
 
-        var event = validator.validate(batch, NOW).accepted().getFirst();
+        var event = validator.validate(parsed, NOW).accepted().getFirst();
 
         assertThat(event.url()).isEqualTo("https://shop.test/pay?email=%5Bemail%5D");
         assertThat(event.errorMessage()).isEqualTo("card [card] declined");
         assertThat(event.targetText()).hasSize(1024).doesNotContain("jane").doesNotContain("@");
         assertThat(event.errorStack()).hasSize(8192);
-        assertThat(validator.anonymousId(batch)).hasSize(128);
+        assertThat(validator.anonymousId(parsed.batch())).hasSize(128);
     }
 
     @Test

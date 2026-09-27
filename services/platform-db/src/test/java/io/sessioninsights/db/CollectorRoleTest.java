@@ -17,7 +17,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-/** V4: resolve_site_key() is the collector role's only access to PostgreSQL (ADR-0011). */
+/** V4: resolve_site_key() is the collector role's only access to PostgreSQL (ADR-0010). */
 @Testcontainers
 class CollectorRoleTest {
 
@@ -68,6 +68,27 @@ class CollectorRoleTest {
         }
     }
 
+    /** The owner policies added by V4 grant SELECT and nothing else. */
+    @Test
+    void ownerPoliciesAreSelectOnly() throws SQLException {
+        try (Connection c = DriverManager.getConnection(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword());
+             Statement s = c.createStatement();
+             var rs = s.executeQuery("""
+                     SELECT tablename, cmd, roles::text, permissive, qual, with_check
+                     FROM pg_policies WHERE policyname = 'key_resolution_owner_read' ORDER BY tablename""")) {
+            int policies = 0;
+            while (rs.next()) {
+                policies++;
+                assertThat(rs.getString("cmd")).as(rs.getString("tablename")).isEqualTo("SELECT");
+                assertThat(rs.getString("roles")).isEqualTo("{" + postgres.getUsername() + "}");
+                assertThat(rs.getString("permissive")).isEqualTo("PERMISSIVE");
+                assertThat(rs.getString("qual")).isEqualTo("true");
+                assertThat(rs.getString("with_check")).as("SELECT policies have no WITH CHECK").isNull();
+            }
+            assertThat(policies).isEqualTo(3);
+        }
+    }
+
     @Test
     void appRoleCannotExecuteTheResolver() throws SQLException {
         try (Connection c = DriverManager.getConnection(postgres.getJdbcUrl(), TestContainers.APP_USER, TestContainers.APP_PASSWORD);
@@ -98,6 +119,11 @@ class CollectorRoleTest {
                 assertThat(rs.getBoolean(2)).isFalse();
             }
             key = insertKey(s, "plain");
+            // the owner policy is SELECT-only: writes by a non-superuser owner still need a tenant
+            s.execute("SELECT set_config('app.tenant_id', '', false)");
+            assertThatThrownBy(() -> s.execute("INSERT INTO tenant (id, name) VALUES ('%s', 'x')".formatted(UUID.randomUUID())))
+                    .isInstanceOf(SQLException.class).hasMessageContaining("row-level security");
+            assertThat(s.executeUpdate("UPDATE site_key SET key_prefix = 'x'")).as("no row visible for UPDATE").isZero();
         }
         try (Connection c = collector(url); Statement s = c.createStatement();
              var rs = s.executeQuery("SELECT tenant_id FROM resolve_site_key('" + key + "')")) {

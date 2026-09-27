@@ -37,7 +37,8 @@ class NoSensitiveLoggingTest extends CollectorIntegrationTest {
         assertThat(post("/v1/events?k=" + unknownKey).body(valid).send().statusCode()).isEqualTo(401);
         assertThat(post("/v1/events").key(site).body("{\"sessionId\":\"" + marker + "\"}").send().statusCode()).isEqualTo(400);
         assertThat(post("/v1/events").key(site).body("{" + marker).send().statusCode()).isEqualTo(400);
-        assertThat(post("/v1/events").key(site).body(valid.replace("CLICK", marker)).send().statusCode()).isEqualTo(400);
+        assertThat(post("/v1/events").key(site).body(valid.replace("CLICK", marker)).send().statusCode())
+                .as("unknown type: dropped, not rejected").isEqualTo(202);
         assertThat(post("/v1/events").key(site).header("Origin", "https://" + marker + ".example").body(valid).send().statusCode()).isEqualTo(403);
         assertThat(options("/v1/events?k=" + site.key()).send().statusCode()).isEqualTo(204);
 

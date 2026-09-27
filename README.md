@@ -88,8 +88,9 @@ curl -i 'http://localhost:8081/v1/events?k=<dev site key>' \
 ```
 
 `202` means every event was acknowledged by Kafka (`telemetry.events.v1`). Replay chunks go
-to `POST /v1/replay`. The key may also be sent as `X-SI-Key`; a browser `Origin` on the
-site's allow-list is required (ADR-0011).
+to `POST /v1/replay`. Browser clients always send the key as `?k=`; the `X-SI-Key` header is
+for non-browser clients only. A browser `Origin` on the site's allow-list is required
+(ADR-0010).
 
 ## Repository layout
 

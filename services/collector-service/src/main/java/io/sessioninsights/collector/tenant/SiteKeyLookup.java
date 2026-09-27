@@ -7,7 +7,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-/** Calls {@code resolve_site_key()}, the collector role's only database access (ADR-0011). */
+/** Calls {@code resolve_site_key()}, the collector role's only database access (ADR-0010). */
 @Component
 public class SiteKeyLookup {
 

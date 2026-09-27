@@ -1,4 +1,4 @@
--- Phase 2 / task 2.2: tenant resolution at the ingestion edge (ADR-0011).
+-- Phase 2 / task 2.2: tenant resolution at the ingestion edge (ADR-0010).
 -- The collector knows only a site key; RLS hides site_key rows until a tenant is set.
 -- resolve_site_key() is the single pre-tenant read path. The collector role may call it and
 -- nothing else: no table privileges at all.

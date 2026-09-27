@@ -20,6 +20,8 @@ public class CollectorMetrics {
 
     /** Drop reason for events whose client timestamp is outside the accepted window. */
     public static final String DROPPED_TS_OUT_OF_WINDOW = "ts_out_of_window";
+    /** Drop reason for events whose {@code type} is not an {@code EventType} (e.g. a newer SDK). */
+    public static final String DROPPED_UNKNOWN_TYPE = "unknown_type";
 
     private final MeterRegistry registry;
     private final Counter accepted;

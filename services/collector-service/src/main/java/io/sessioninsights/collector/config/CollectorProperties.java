@@ -41,14 +41,14 @@ public record CollectorProperties(
             @DefaultValue("32") int sdkVersion) {
     }
 
-    /** Site key cache (ADR-0011): revocation takes effect within {@code positiveTtl}. */
+    /** Site key cache (ADR-0010): revocation takes effect within {@code positiveTtl}. */
     public record KeyCache(
             @DefaultValue("60s") Duration positiveTtl,
             @DefaultValue("10s") Duration negativeTtl,
             @DefaultValue("10000") long maximumSize) {
     }
 
-    /** Per site key token bucket, per collector instance (ADR-0011). */
+    /** Per site key token bucket, per collector instance (ADR-0010). */
     public record RateLimit(
             @DefaultValue("100") long capacity,
             @DefaultValue("50") long refillTokens,

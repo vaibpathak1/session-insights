@@ -5,7 +5,7 @@ spring:
     virtual:
       enabled: true   # ADR-0001: virtual threads for all blocking I/O
   # Defaults match .env.example (local development only); override via environment.
-  # The collector role may only EXECUTE resolve_site_key(): no table privileges (ADR-0011).
+  # The collector role may only EXECUTE resolve_site_key(): no table privileges (ADR-0010).
   datasource:
     url: ${POSTGRES_URL:jdbc:postgresql://localhost:5432/insights}
     username: ${POSTGRES_COLLECTOR_USER:insights_collector}
@@ -42,7 +42,7 @@ collector:
     max-replay-body: 4MB       # decompressed; = replay.chunks.v1 max.message.bytes
     max-event-age: 24h         # older client timestamps are dropped and counted
     max-clock-skew: 5m         # so are timestamps further in the future
-  key-cache:                   # ADR-0011: revocation takes effect within positive-ttl
+  key-cache:                   # ADR-0010: revocation takes effect within positive-ttl
     positive-ttl: 60s
     negative-ttl: 10s
     maximum-size: 10000
