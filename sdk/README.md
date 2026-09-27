@@ -60,3 +60,32 @@ SessionInsights.version                     // SDK version string
 Calling `init` while the SDK is running is a no-op (with a warning in debug mode). Call
 `shutdown()` first to re-initialise with different options. Invalid options leave the SDK
 inert; they never throw.
+
+## Privacy
+
+Masking happens in the browser, before anything is sent; the server redacts again (ADR-0006).
+
+- **All inputs are masked** by default (`*` per character).
+- **Sensitive fields are never recorded**, whatever the configuration, and are never
+  unmasked even inside `data-si-unmask`: they are replaced by a same-size placeholder, with
+  no value and no input events. Sensitive means:
+  - `input[type=password]` and `autocomplete` containing `password`
+    (a field that was a password stays masked after a "show password" toggle)
+  - `autocomplete` containing `cc-` (card number, CVC, expiry, …) or `one-time-code`
+  - inputs, textareas and selects whose `name` or `id` contains `otp`, `cvv` or `cvc`
+    (case-insensitive)
+- **`data-si-block`**: the element and everything inside it are never recorded.
+- **`data-si-unmask`**: inputs inside the element are recorded unmasked (except sensitive
+  fields, see above).
+- **`maskAllText: true`** also masks all text on the page. Off by default.
+- Not recorded in v1: canvas content, video, cross-origin iframes.
+
+```html
+<div data-si-block>Account balance: …</div>
+<form data-si-unmask>
+  <input name="search" />
+  <!-- recorded as typed -->
+  <input type="password" />
+  <!-- never recorded -->
+</form>
+```
