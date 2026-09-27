@@ -4,7 +4,7 @@ Open-source, self-hostable session replay and product insights platform.
 Record user sessions, replay them, detect friction automatically, and let a local LLM
 triage problem sessions, with humans reviewing anything uncertain.
 
-> **Status:** Milestone M0 — foundations. Nothing records sessions yet.
+> **Status:** Milestone M0 complete (local stack + build verified). Next: M1 — nothing records sessions yet.
 > See [Roadmap](#roadmap).
 
 ## Architecture
@@ -90,7 +90,7 @@ acceptance criteria in [`docs/product/features.md`](docs/product/features.md).
 
 | Milestone | Demo | Status |
 |---|---|---|
-| M0 Foundation | Stack + build green | 🚧 Phase 0 |
+| M0 Foundation | Stack + build green | ✅ |
 | M1 First replay | SDK on a demo page → replay in dashboard | ⏳ Phases 1–6 |
 | M2 Find the pain | Filter rage clicks, jump to the moment | ⏳ Phases 7–8 |
 | M3 AI triage | Local-LLM summary, human review queue | ⏳ Phases 9–10 |
