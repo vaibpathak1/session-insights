@@ -57,6 +57,26 @@ class PostgresMigrationsTest {
                 + " VALUES ('%s', 'GEMINI', 'm')".formatted(tenant));
         assertCheckViolation("INSERT INTO site (tenant_id, name, sampling_rate)"
                 + " VALUES ('%s', 's2', 1.5)".formatted(tenant));
+
+        UUID session = UUID.randomUUID();
+        assertCheckViolation(("INSERT INTO user_session (id, tenant_id, site_id, anonymous_id, started_at, last_active_at,"
+                + " analysis_status) VALUES ('%s', '%s', '%s', 'a', now(), now(), 'DONE')").formatted(session, tenant, site));
+        exec(("INSERT INTO user_session (id, tenant_id, site_id, anonymous_id, started_at, last_active_at)"
+                + " VALUES ('%s', '%s', '%s', 'a', now(), now())").formatted(session, tenant, site));
+        assertCheckViolation("INSERT INTO erasure_request (tenant_id, subject_type, subject_id)"
+                + " VALUES ('%s', 'TENANT', '%s')".formatted(tenant, session));
+        assertCheckViolation("INSERT INTO external_ticket_link (tenant_id, session_id, system, external_id)"
+                + " VALUES ('%s', '%s', 'GITHUB', 'X-1')".formatted(tenant, session));
+    }
+
+    @Test
+    void insightEmbeddingHasHnswCosineIndex() throws SQLException {
+        try (Connection c = DriverManager.getConnection(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword());
+             var rs = c.createStatement().executeQuery(
+                     "SELECT indexdef FROM pg_indexes WHERE indexname = 'session_insight_embedding_hnsw'")) {
+            assertThat(rs.next()).isTrue();
+            assertThat(rs.getString(1)).contains("USING hnsw").contains("vector_cosine_ops");
+        }
     }
 
     static void assertCheckViolation(String sql) {
