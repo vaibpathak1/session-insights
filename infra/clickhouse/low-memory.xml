@@ -1,0 +1,9 @@
+<!-- Keeps ClickHouse friendly on a laptop that is also running a 7B model.
+     Remove or raise for real deployments. -->
+<clickhouse>
+    <max_server_memory_usage_to_ram_ratio>0.25</max_server_memory_usage_to_ram_ratio>
+    <mark_cache_size>268435456</mark_cache_size>
+    <logger>
+        <level>warning</level>
+    </logger>
+</clickhouse>
