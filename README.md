@@ -4,7 +4,8 @@ Open-source, self-hostable session replay and product insights platform.
 Record user sessions, replay them, detect friction automatically, and let a local LLM
 triage problem sessions, with humans reviewing anything uncertain.
 
-> **Status:** Milestone M0 complete (local stack + build verified). Next: M1 — nothing records sessions yet.
+> **Status:** Milestone M0 complete (local stack + build verified). Working towards M1: schemas (Phase 1) and the
+> collector API → Kafka (Phase 2) are done; nothing records sessions yet (SDK is Phase 3).
 > See [Roadmap](#roadmap).
 
 ## Architecture
