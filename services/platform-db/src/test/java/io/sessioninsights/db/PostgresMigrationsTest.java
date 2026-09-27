@@ -142,6 +142,42 @@ class PostgresMigrationsTest {
         }
     }
 
+    @Test
+    void appRoleDeletingASessionCascadesToInsightsAndAuditWithoutDeleteGrantOnAudit() throws SQLException {
+        UUID tenant = UUID.randomUUID();
+        UUID site = UUID.randomUUID();
+        UUID session = UUID.randomUUID();
+        exec("INSERT INTO tenant (id, name) VALUES ('%s', 'cascade')".formatted(tenant));
+        exec("INSERT INTO site (id, tenant_id, name) VALUES ('%s', '%s', 's')".formatted(site, tenant));
+        exec(("INSERT INTO user_session (id, tenant_id, site_id, anonymous_id, started_at, last_active_at)"
+                + " VALUES ('%s', '%s', '%s', 'a', now(), now())").formatted(session, tenant, site));
+        exec("INSERT INTO session_insight (id, tenant_id, session_id) VALUES (nextval('session_insight_seq'), '%s', '%s')"
+                .formatted(tenant, session));
+        exec("INSERT INTO review_event (tenant_id, session_id, action) VALUES ('%s', '%s', 'NOTE')".formatted(tenant, session));
+
+        try (Connection app = DriverManager.getConnection(postgres.getJdbcUrl(), TestContainers.APP_USER, TestContainers.APP_PASSWORD);
+             Statement s = app.createStatement()) {
+            app.setAutoCommit(false);
+            s.execute("SELECT set_config('app.tenant_id', '%s', true)".formatted(tenant));
+            assertThatThrownBy(() -> s.execute("DELETE FROM review_event WHERE session_id = '%s'".formatted(session)))
+                    .as("no direct DELETE on the audit log")
+                    .isInstanceOf(SQLException.class).hasMessageContaining("permission denied");
+            app.rollback();
+
+            s.execute("SELECT set_config('app.tenant_id', '%s', true)".formatted(tenant));
+            assertThat(s.executeUpdate("DELETE FROM user_session WHERE id = '%s'".formatted(session))).isEqualTo(1);
+            app.commit();
+        }
+
+        try (Connection c = owner(); Statement s = c.createStatement()) {
+            for (String table : List.of("user_session", "session_insight", "review_event")) {
+                String column = table.equals("user_session") ? "id" : "session_id";
+                assertThat(count(s, "SELECT count(*) FROM %s WHERE %s = '%s'".formatted(table, column, session)))
+                        .as(table).isZero();
+            }
+        }
+    }
+
     static long count(Statement s, String sql) throws SQLException {
         try (var rs = s.executeQuery(sql)) {
             rs.next();
