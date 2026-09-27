@@ -1,5 +1,7 @@
 package io.sessioninsights.domain;
 
+import io.sessioninsights.domain.session.UserSession;
+import io.sessioninsights.domain.session.UserSessionRepository;
 import io.sessioninsights.domain.tenancy.TenantAwareJpaTransactionManager;
 import io.sessioninsights.domain.tenancy.TenantContext;
 import jakarta.persistence.EntityManager;
@@ -19,6 +21,9 @@ class RowLevelSecurityTest extends DomainIntegrationTest {
     @Autowired
     PlatformTransactionManager transactionManager;
 
+    @Autowired
+    UserSessionRepository sessions;
+
     @Test
     void usesTenantAwareTransactionManager() {
         assertThat(transactionManager).isInstanceOf(TenantAwareJpaTransactionManager.class);
@@ -37,6 +42,17 @@ class RowLevelSecurityTest extends DomainIntegrationTest {
                 (Number) em.createNativeQuery("SELECT count(*) FROM user_session WHERE id = ?1")
                         .setParameter(1, b.sessionId()).getSingleResult()));
         assertThat(bRowsSeenByA.longValue()).isZero();
+    }
+
+    @Test
+    void repositoryOnlySeesCurrentTenantsSessions() {
+        Fixture a = fixture();
+        Fixture b = fixture();
+        TenantContext.runAs(a.tenantId(), () -> tx.executeWithoutResult(status -> {
+            assertThat(sessions.findById(b.sessionId())).isEmpty();
+            assertThat(sessions.findById(a.sessionId())).isPresent();
+            assertThat(sessions.findAll()).extracting(UserSession::getId).containsExactly(a.sessionId());
+        }));
     }
 
     @Test
