@@ -34,8 +34,8 @@ public abstract class DomainIntegrationTest {
         registry.add("spring.flyway.user", POSTGRES::getUsername);
         registry.add("spring.flyway.password", POSTGRES::getPassword);
         registry.add("spring.flyway.locations", () -> "classpath:db/migration/postgres");
-        registry.add("spring.flyway.placeholders.appUser", () -> TestContainers.APP_USER);
-        registry.add("spring.flyway.placeholders.appPassword", () -> TestContainers.APP_PASSWORD);
+        TestContainers.flywayPlaceholders().forEach((name, value) ->
+                registry.add("spring.flyway.placeholders." + name, () -> value));
     }
 
     @Autowired

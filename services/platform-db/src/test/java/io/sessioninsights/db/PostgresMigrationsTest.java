@@ -14,7 +14,6 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -34,7 +33,7 @@ class PostgresMigrationsTest {
         flyway = Flyway.configure()
                 .dataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())
                 .locations("classpath:db/migration/postgres")
-                .placeholders(Map.of("appUser", TestContainers.APP_USER, "appPassword", TestContainers.APP_PASSWORD))
+                .placeholders(TestContainers.flywayPlaceholders())
                 .load();
         firstRunExecuted = flyway.migrate().migrationsExecuted;
     }
