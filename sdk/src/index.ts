@@ -22,7 +22,11 @@ let client: Client | undefined;
 export function init(options: InitOptions): void {
   guard(() => {
     if (client) {
-      client.log.warn('init called again; ignoring (call shutdown() first to re-initialise)');
+      client.log.warn(
+        client.isRunning
+          ? 'init called again; ignoring (call shutdown() first to re-initialise)'
+          : 'init called again; ignoring (stopped for this page)',
+      );
       return;
     }
     const log = createLogger(isDebug(options));

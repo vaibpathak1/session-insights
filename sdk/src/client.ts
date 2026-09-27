@@ -4,21 +4,17 @@ import { listen } from './dom';
 import { guarded } from './guard';
 import { uuid } from './ids';
 import type { Logger } from './log';
+import { Outbox, type QueuedEvent } from './outbox';
 import { RRWEB_FULL_SNAPSHOT, startRecorder, type Recorder, type RrwebEvent } from './recorder';
 import { ReplayBuffer, type SealedChunk } from './replay';
+import { whenIdle } from './schedule';
+import { Sender, type FatalReason } from './sender';
 import { SessionManager } from './session';
 import { browserStore } from './storage';
-import type { TelemetryEvent } from './wire';
+import { Transport } from './transport';
 
 /** User input that counts as session activity (FR-SES-1). */
 const ACTIVITY_EVENTS = ['pointerdown', 'keydown', 'input', 'scroll', 'touchstart', 'mousemove'];
-
-/** A derived event with the identity it was captured under. */
-export interface StampedEvent {
-  sessionId: string;
-  anonymousId: string;
-  event: TelemetryEvent;
-}
 
 /** One running SDK instance. All methods are called through `guard` by the public API. */
 export class Client {
@@ -27,11 +23,11 @@ export class Client {
   private replay!: ReplayBuffer;
   private recorder: Recorder | null = null;
   private uninstallCapture: (() => void) | null = null;
+  private outbox!: Outbox;
+  private sender!: Sender;
+  /** Replay data was dropped from the full queue; take a full snapshot once it drains. */
+  private needsSnapshot = false;
   private readonly disposers: Array<() => void> = [];
-
-  /** Ready to send; drained by the transport (task 3.7). */
-  readonly pendingEvents: StampedEvent[] = [];
-  readonly pendingChunks: SealedChunk[] = [];
 
   constructor(
     readonly config: Config,
@@ -44,9 +40,26 @@ export class Client {
       session: browserStore('sessionStorage'),
       sampleRate: this.config.sampleRate,
     });
+    this.outbox = new Outbox(__SDK_VERSION__, () => {
+      this.needsSnapshot = true;
+      this.log.info('queue full: oldest replay data dropped');
+    });
+    this.sender = new Sender(
+      this.outbox,
+      new Transport({
+        collectorUrl: this.config.collectorUrl,
+        siteKey: this.config.siteKey,
+        log: this.log,
+      }),
+      {
+        onFatal: (reason) => this.halt(reason),
+        onDrained: () => this.onDrained(),
+      },
+      this.log,
+    );
     this.replay = new ReplayBuffer(
       () => this.session.takeChunkSeq(),
-      (chunk) => this.pendingChunks.push(chunk),
+      (chunk) => this.outbox.addChunk(chunk),
     );
     this.running = true;
 
@@ -54,17 +67,19 @@ export class Client {
     for (const type of ACTIVITY_EVENTS) {
       this.disposers.push(listen(window, type, onActivity, { capture: true, passive: true }));
     }
+    const onPageHide = guarded(() => this.onPageHide(), this.log);
+    this.disposers.push(listen(window, 'pagehide', onPageHide));
     this.disposers.push(
       listen(
-        window,
-        'pagehide',
-        guarded(() => this.onPageHide(), this.log),
+        document,
+        'visibilitychange',
+        guarded(() => {
+          if (document.visibilityState === 'hidden') onPageHide();
+        }, this.log),
       ),
     );
-    const timer = setInterval(
-      guarded(() => this.flush(), this.log),
-      this.config.flushIntervalMs,
-    );
+    const flushWhenIdle = guarded(() => this.flush(), this.log);
+    const timer = setInterval(() => whenIdle(flushWhenIdle), this.config.flushIntervalMs);
     this.disposers.push(() => clearInterval(timer));
 
     this.applySampling();
@@ -75,6 +90,16 @@ export class Client {
 
   get isRunning(): boolean {
     return this.running;
+  }
+
+  /** Queued, unsent replay chunks (oldest first). */
+  get pendingChunks(): readonly SealedChunk[] {
+    return this.outbox.pendingChunks;
+  }
+
+  /** Queued, unsent events (oldest first). */
+  get pendingEvents(): readonly QueuedEvent[] {
+    return this.outbox.pendingEvents;
   }
 
   getSessionId(): string | null {
@@ -90,16 +115,37 @@ export class Client {
     this.log.info(`reset; new session ${this.session.sessionId}`);
   }
 
-  /** Seals buffered replay data. Sending is task 3.7. */
+  /** Seals buffered replay data and sends everything queued. */
   flush(): void {
     if (!this.running) return;
     this.replay.seal();
+    this.sender.flush();
   }
 
-  /** Flushes what is buffered and stops. The instance cannot be restarted. */
+  /** Stops recording and sends what is buffered once, without retries. */
   shutdown(): void {
     if (!this.running) return;
-    this.flush();
+    this.replay.seal();
+    this.stop();
+    this.sender.finish();
+    this.log.info('shut down');
+  }
+
+  /** The collector refused the key or origin (or was never reachable): stop for this page. */
+  private halt(reason: FatalReason): void {
+    if (!this.running) return;
+    this.stop();
+    this.replay.clear();
+    this.outbox.clear();
+    this.log.once(
+      'halted',
+      'status' in reason
+        ? `collector refused this site key or origin (${reason.status}); stopped for this page`
+        : 'collector unreachable or refused (in browsers CORS hides 401/403); stopped for this page',
+    );
+  }
+
+  private stop(): void {
     this.stopCapturing();
     this.running = false;
     this.session.persist();
@@ -110,7 +156,6 @@ export class Client {
         // keep removing the rest
       }
     }
-    this.log.info('shut down');
   }
 
   private onActivity(): void {
@@ -161,10 +206,10 @@ export class Client {
 
   private onEvent(captured: CapturedEvent): void {
     if (!this.running || !this.session.sampled || this.session.isIdle()) return;
-    this.pendingEvents.push({
-      sessionId: this.session.sessionId,
-      anonymousId: this.session.anonymousId,
-      event: { clientEventId: uuid(), ts: Date.now(), ...captured },
+    this.outbox.addEvent(this.session.sessionId, this.session.anonymousId, {
+      clientEventId: uuid(),
+      ts: Date.now(),
+      ...captured,
     });
   }
 
@@ -173,10 +218,24 @@ export class Client {
     // full snapshot, so nothing is lost for replay.
     if (!this.running || !this.session.sampled || this.session.isIdle()) return;
     this.replay.add(this.session.sessionId, event);
-    if (event.type === RRWEB_FULL_SNAPSHOT) this.replay.seal(); // ship snapshots promptly
+    if (event.type === RRWEB_FULL_SNAPSHOT) {
+      this.replay.seal(); // ship snapshots (chunk 0) promptly, not at the next interval
+      this.sender.flush();
+    }
   }
 
+  /** Page is being hidden or unloaded: beacon what fits in the budget. */
   private onPageHide(): void {
+    if (!this.running) return;
+    this.replay.seal();
+    this.sender.pageHide();
     this.session.persist();
+  }
+
+  private onDrained(): void {
+    if (this.needsSnapshot && this.recorder) {
+      this.needsSnapshot = false;
+      this.recorder.takeFullSnapshot(); // replay can resume after dropped chunks
+    }
   }
 }
