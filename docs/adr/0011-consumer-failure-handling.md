@@ -57,6 +57,18 @@ rejects a whole insert when a single row cannot be parsed (for example duplicate
    stack-trace headers are **not** written: ClickHouse error messages quote the rejected
    row, and nothing from a payload may leave through headers or logs.
 
+6. **Threads: platform threads for third-party libraries that block inside `synchronized`.**
+   On Java 21, a virtual thread that blocks inside `synchronized` pins its carrier.
+   kafka-clients' classic consumer does exactly that: the group coordinator and metadata
+   code sleeps and waits in `synchronized` (`AbstractCoordinator.ensureCoordinatorReady`,
+   `requestRejoin`, join/sync handlers, `Metadata.update`). With 12 consumers on 8 carriers
+   the processor deadlocked at startup. So **the Kafka consumer loop threads are platform
+   threads**: one per partition consumer, a small fixed number. Virtual threads are for our
+   own blocking work, such as the parallel object PUTs inside a batch, and for HTTP requests.
+   `VirtualThreadPinningTest` records JFR `jdk.VirtualThreadPinned` events (no threshold)
+   across consumer startup, ClickHouse inserts and parallel S3 PUTs, and requires none. With
+   virtual consumer threads it fails on the kafka-clients frames above.
+
 ## Consequences
 - A long outage turns into consumer lag, not data loss or manual DLT replay. Kafka retention
   (3 days) bounds how long an outage can last before data is lost, so alert on the gauge and
@@ -68,6 +80,10 @@ rejects a whole insert when a single row cannot be parsed (for example duplicate
   nothing lost.
 - A code bug that throws for every batch also stalls instead of dead-lettering. It shows up
   as one ERROR line, the gauge (`store=unknown`) and lag.
+- ADR-0001's "virtual threads for all blocking I/O" gets one scoped exception: threads
+  owned by a library that blocks inside `synchronized` on Java 21. Revisit on a JDK with
+  JEP 491 (24+), or with the KIP-848 consumer (`group.protocol=consumer`), which does its
+  network I/O on its own background thread.
 - Insert deduplication by token relies on `non_replicated_deduplication_window` (ClickHouse
   V2 migration); across redeliveries, ReplacingMergeTree deduplicates (read with `FINAL`).
 

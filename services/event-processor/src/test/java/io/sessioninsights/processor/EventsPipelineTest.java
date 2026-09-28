@@ -131,12 +131,17 @@ class EventsPipelineTest extends ProcessorIntegrationTest {
     }
 
     @Test
-    void listenersRunOnVirtualThreadsWithOneConsumerPerPartition() throws Exception {
+    void consumersRunOnPlatformThreadsOnePerPartition() throws Exception {
         for (String id : List.of(EventsListener.ID, ReplayListener.ID)) {
             var container = (ConcurrentMessageListenerContainer<?, ?>) listeners.getListenerContainer(id);
             assertThat(container.getConcurrency()).isEqualTo(ProcessorTestInfra.PARTITIONS);
-            var executor = container.getContainers().getFirst().getContainerProperties().getListenerTaskExecutor();
-            assertThat(executor.submit(() -> Thread.currentThread().isVirtual()).get()).isTrue();
+            for (var child : container.getContainers()) {
+                var executor = child.getContainerProperties().getListenerTaskExecutor();
+                assertThat(executor.submit(() -> Thread.currentThread().isVirtual()).get())
+                        .as("kafka-clients pins virtual threads on Java 21 (ADR-0011)").isFalse();
+            }
         }
+        assertThat(Thread.getAllStackTraces().keySet()).extracting(Thread::getName)
+                .filteredOn(name -> name.startsWith("kafka-consumer-")).hasSizeGreaterThanOrEqualTo(2 * ProcessorTestInfra.PARTITIONS);
     }
 }
