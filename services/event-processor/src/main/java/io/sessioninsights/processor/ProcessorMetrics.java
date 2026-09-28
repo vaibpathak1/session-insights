@@ -33,6 +33,10 @@ public class ProcessorMetrics {
     public static final String STORE_UNAVAILABLE = "si.processor.store.unavailable";
     public static final String SESSIONS_UPSERTED = "si.processor.sessions.upserted";
     public static final String SESSIONS_SKIPPED = "si.processor.sessions.skipped";
+    public static final String SESSIONS_CLOSED = "si.processor.sessions.closed";
+    public static final String SESSIONS_CLOSE_DEFERRED = "si.processor.sessions.close.deferred";
+    public static final String SESSIONS_CLOSED_WITHOUT_EVENTS = "si.processor.sessions.closed.without_events";
+    public static final String CLOSER_FAILURES = "si.processor.sessions.closer.failures";
 
     private final MeterRegistry registry;
     private final Counter chunksStored;
@@ -89,6 +93,24 @@ public class ProcessorMetrics {
     public void sessionRecordSkipped(String reason) {
         Counter.builder(SESSIONS_SKIPPED).description("Invalid records skipped by the session tracker")
                 .tag("reason", reason).register(registry).increment();
+    }
+
+    /** One closer pass: {@code kind} close = first close, recompute = late events. */
+    public void sessionsClosed(int closed, int recomputed, int deferred, int withoutEvents) {
+        Counter.builder(SESSIONS_CLOSED).description("Sessions closed or recomputed by the closer")
+                .tag("kind", "close").register(registry).increment(closed);
+        Counter.builder(SESSIONS_CLOSED).description("Sessions closed or recomputed by the closer")
+                .tag("kind", "recompute").register(registry).increment(recomputed);
+        Counter.builder(SESSIONS_CLOSE_DEFERRED)
+                .description("Claims skipped because ClickHouse had no events for the session yet")
+                .register(registry).increment(deferred);
+        Counter.builder(SESSIONS_CLOSED_WITHOUT_EVENTS)
+                .description("Sessions closed with zero counters after 2 x idle timeout without ClickHouse events")
+                .register(registry).increment(withoutEvents);
+    }
+
+    public void closerFailed() {
+        Counter.builder(CLOSER_FAILURES).description("Closer passes rolled back").register(registry).increment();
     }
 
     public void storeRetry(Store store) {

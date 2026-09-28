@@ -124,6 +124,8 @@ public final class ProcessorTestInfra {
         registry.add("processor.s3.endpoint", ProcessorTestInfra::s3Endpoint);
         registry.add("processor.s3.api-call-timeout", () -> "5s");
         registry.add("processor.retry.max-interval", () -> "2s");
+        // tests drive closer passes explicitly (SessionCloserTest); no background closing
+        registry.add("processor.sessions.closer.enabled", () -> "false");
         // the processor connects as its own role, exactly as in compose (RLS applies)
         registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
         registry.add("spring.datasource.username", () -> TestContainers.PROCESSOR_USER);
@@ -274,7 +276,9 @@ public final class ProcessorTestInfra {
                     new NewTopic(Topics.TELEMETRY_EVENTS, PARTITIONS, (short) 1),
                     new NewTopic(Topics.TELEMETRY_EVENTS_DLT, 1, (short) 1),
                     new NewTopic(Topics.REPLAY_CHUNKS, PARTITIONS, (short) 1).configs(replay),
-                    new NewTopic(Topics.REPLAY_CHUNKS_DLT, 1, (short) 1).configs(replay))).all().get();
+                    new NewTopic(Topics.REPLAY_CHUNKS_DLT, 1, (short) 1).configs(replay),
+                    new NewTopic(Topics.SESSION_LIFECYCLE, PARTITIONS, (short) 1)
+                            .configs(Map.of("cleanup.policy", "compact")))).all().get();
         } catch (InterruptedException | ExecutionException e) {
             throw new IllegalStateException("creating test topics failed", e);
         }

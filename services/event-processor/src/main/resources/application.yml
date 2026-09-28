@@ -46,6 +46,9 @@ spring:
         # compressed batch. Below 16 MB a large poison chunk could never be dead-lettered and
         # would be retried forever.
         max.request.size: 17825792   # 17 MB
+        # send() blocks while it waits for topic metadata; bounded so a closer pass (task 5.4)
+        # or a dead-letter publish fails fast into a rollback / retry when Kafka is unreachable
+        max.block.ms: 5000
 
 server:
   port: 8082
@@ -91,6 +94,14 @@ processor:
     max-interval: 30s
   replay:
     zstd-level: 3
+  sessions:
+    idle-timeout: ${SESSION_IDLE_TIMEOUT:30m}   # FR-SES-1; the e2e run uses seconds
+    closer:
+      enabled: true
+      interval: ${SESSION_CLOSER_INTERVAL:30s}
+      batch-size: 500
+      statement-timeout: 10s
+      publish-timeout: 10s
 
 management:
   endpoints:

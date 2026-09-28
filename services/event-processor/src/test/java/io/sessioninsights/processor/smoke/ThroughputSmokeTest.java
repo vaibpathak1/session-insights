@@ -72,6 +72,7 @@ class ThroughputSmokeTest {
     private void burst(KafkaProducer<String, byte[]> producer) throws Exception {
         UUID tenant = UUID.randomUUID();
         UUID site = UUID.randomUUID();
+        createTenant(tenant, site);
         List<UUID> sessions = new ArrayList<>();
         for (int i = 0; i < SESSIONS; i++) {
             sessions.add(UUID.randomUUID());
@@ -142,6 +143,7 @@ class ThroughputSmokeTest {
     private void paced(KafkaProducer<String, byte[]> producer) throws Exception {
         UUID tenant = UUID.randomUUID();
         UUID site = UUID.randomUUID();
+        createTenant(tenant, site);
         List<UUID> sessions = new ArrayList<>();
         for (int i = 0; i < 500; i++) {
             sessions.add(UUID.randomUUID());
@@ -260,6 +262,20 @@ class ThroughputSmokeTest {
                 ProducerConfig.LINGER_MS_CONFIG, 20,
                 ProducerConfig.BATCH_SIZE_CONFIG, 262_144),
                 new StringSerializer(), new ByteArraySerializer());
+    }
+
+    /** user_session references tenant and site: create them as the owner, like api-service would. */
+    private static void createTenant(UUID tenant, UUID site) throws java.sql.SQLException {
+        try (var c = java.sql.DriverManager.getConnection(env("POSTGRES_URL", "jdbc:postgresql://localhost:5432/insights"),
+                env("POSTGRES_USER", "insights"), env("POSTGRES_PASSWORD", "insights_dev_pw"));
+             var s = c.prepareStatement("INSERT INTO tenant (id, name) VALUES (?, 'throughput-smoke')");
+             var t = c.prepareStatement("INSERT INTO site (id, tenant_id, name, allowed_origins) VALUES (?, ?, 'smoke', ARRAY['http://localhost:*'])")) {
+            s.setObject(1, tenant);
+            s.executeUpdate();
+            t.setObject(1, site);
+            t.setObject(2, tenant);
+            t.executeUpdate();
+        }
     }
 
     private static String env(String name, String fallback) {
