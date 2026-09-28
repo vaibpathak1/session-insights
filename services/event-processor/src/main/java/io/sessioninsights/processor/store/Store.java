@@ -4,6 +4,7 @@ package io.sessioninsights.processor.store;
 public enum Store {
     CLICKHOUSE("clickhouse"),
     S3("s3"),
+    POSTGRES("postgres"),
     /** An unexpected failure that no store classified (a bug); handled like an outage. */
     UNKNOWN("unknown");
 

@@ -5,6 +5,16 @@ spring:
     virtual:
       enabled: true   # ADR-0001: virtual threads for all blocking I/O (incl. Kafka listener threads)
   # ADR-0004 / ADR-0011: batch listeners, manual commit only after the batch is written.
+  # Session lifecycle (Phase 5): the processor role, SELECT/INSERT/UPDATE on user_session and
+  # end_user under RLS, plus claim_sessions_to_close(); never JPA, never migrations.
+  datasource:
+    url: ${POSTGRES_URL:jdbc:postgresql://localhost:5432/insights}
+    username: ${POSTGRES_PROCESSOR_USER:insights_processor}
+    password: ${POSTGRES_PROCESSOR_PASSWORD:insights_processor_dev_pw}
+    hikari:
+      maximum-pool-size: 8
+      connection-timeout: 5000          # an outage fails fast into the ADR-0011 back-off
+      initialization-fail-timeout: -1   # pool creation never blocks on PostgreSQL (task 5.0)
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP:localhost:9092}
     consumer:
@@ -50,6 +60,8 @@ processor:
       max-poll-records: 2000
       fetch-min-bytes: 262144      # wait for ~256 KB or fetch-max-wait-ms, for large inserts
       fetch-max-wait-ms: 500
+    sessions:
+      group-id: event-processor.sessions   # session tracker; poll settings as for events
     replay:
       group-id: event-processor.replay
       max-poll-records: 100

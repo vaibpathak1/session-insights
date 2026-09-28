@@ -24,10 +24,17 @@ public final class Fixtures {
     private Fixtures() {
     }
 
-    /** One tenant/site/session. */
+    /** One tenant/site/session; the tenant and site exist in PostgreSQL (foreign keys of user_session). */
     public record Session(UUID tenantId, UUID siteId, UUID sessionId) {
         public static Session random() {
-            return new Session(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID());
+            Session s = new Session(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID());
+            ProcessorTestInfra.createTenant(s.tenantId(), s.siteId());
+            return s;
+        }
+
+        /** Another session of the same tenant and site. */
+        public Session next() {
+            return new Session(tenantId, siteId, UUID.randomUUID());
         }
 
         public String key() {
@@ -39,6 +46,26 @@ public final class Fixtures {
         return new TelemetryEvent(UUID.randomUUID(), EventType.CLICK, ts, "http://localhost:5173/cart?step=2", "/cart",
                 "Cart", "button#pay", targetText, null, null, null,
                 propsJson == null ? null : WireJson.mapper().readTree(propsJson));
+    }
+
+    public static final String CHROME_MAC = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+            + "(KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36";
+
+    public static TelemetryEvent navigation(long ts, String url) {
+        String path = url.replaceFirst("^[a-z]+://[^/]+", "").replaceFirst("[?#].*$", "");
+        return new TelemetryEvent(UUID.randomUUID(), EventType.NAVIGATION, ts, url, path.isEmpty() ? "/" : path, "Page",
+                null, null, null, null, null, WireJson.mapper().readTree("{\"trigger\":\"pushState\"}"));
+    }
+
+    public static TelemetryEvent ofType(EventType type, long ts) {
+        return new TelemetryEvent(UUID.randomUUID(), type, ts, "http://localhost:5173/", "/", "Page",
+                null, null, "boom", null, null, null);
+    }
+
+    /** As the collector writes it, with a chosen receive time and User-Agent. */
+    public static TelemetryEnvelope envelope(Session s, TelemetryEvent event, Instant receivedAt, String userAgent) {
+        return new TelemetryEnvelope(WireHeaders.CURRENT_SCHEMA_VERSION, s.tenantId(), s.siteId(), s.sessionId(),
+                "anon-" + s.sessionId(), "0.1.0", receivedAt, event, userAgent);
     }
 
     public static TelemetryEnvelope envelope(Session s, TelemetryEvent event) {

@@ -15,17 +15,17 @@ import java.util.function.BiConsumer;
  * after an outage mid-bisection repeats the same tokens and writes nothing twice.
  * {@link io.sessioninsights.processor.store.StoreUnavailableException} propagates.
  */
-final class BisectingWriter {
+public final class BisectingWriter {
 
     private BisectingWriter() {
     }
 
     /** A row and the record it came from. */
-    record Item<T>(ConsumerRecord<String, byte[]> record, T row) {
+    public record Item<T>(ConsumerRecord<String, byte[]> record, T row) {
     }
 
     /** Writes the items and returns those the store rejected. */
-    static <T> List<Item<T>> write(List<Item<T>> items, BiConsumer<List<T>, String> insert) {
+    public static <T> List<Item<T>> write(List<Item<T>> items, BiConsumer<List<T>, String> insert) {
         List<Item<T>> rejected = new ArrayList<>();
         write(items, insert, rejected);
         return rejected;

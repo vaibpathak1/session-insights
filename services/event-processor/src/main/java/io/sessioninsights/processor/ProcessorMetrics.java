@@ -31,6 +31,8 @@ public class ProcessorMetrics {
     public static final String DEAD_LETTERED = "si.processor.dlt";
     public static final String STORE_RETRIES = "si.processor.store.retries";
     public static final String STORE_UNAVAILABLE = "si.processor.store.unavailable";
+    public static final String SESSIONS_UPSERTED = "si.processor.sessions.upserted";
+    public static final String SESSIONS_SKIPPED = "si.processor.sessions.skipped";
 
     private final MeterRegistry registry;
     private final Counter chunksStored;
@@ -75,6 +77,18 @@ public class ProcessorMetrics {
     public void deadLettered(String topic, String reason) {
         Counter.builder(DEAD_LETTERED).description("Records sent to a dead-letter topic")
                 .tag("topic", topic).tag("reason", reason).register(registry).increment();
+    }
+
+    /** Sessions written by the tracker (one per session per batch, before no-op detection). */
+    public void sessionsUpserted(int sessions) {
+        Counter.builder(SESSIONS_UPSERTED).description("Session upserts applied by the session tracker")
+                .register(registry).increment(sessions);
+    }
+
+    /** Records the tracker ignored because the events writer dead-letters them already. */
+    public void sessionRecordSkipped(String reason) {
+        Counter.builder(SESSIONS_SKIPPED).description("Invalid records skipped by the session tracker")
+                .tag("reason", reason).register(registry).increment();
     }
 
     public void storeRetry(Store store) {

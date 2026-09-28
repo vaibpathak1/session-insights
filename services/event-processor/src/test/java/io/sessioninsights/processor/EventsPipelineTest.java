@@ -99,7 +99,8 @@ class EventsPipelineTest extends ProcessorIntegrationTest {
     @Test
     void readsNeverCrossTenants() {
         Session a = Session.random();
-        Session sameSessionOtherTenant = new Session(UUID.randomUUID(), a.siteId(), a.sessionId());
+        Session otherTenant = Session.random();
+        Session sameSessionOtherTenant = new Session(otherTenant.tenantId(), otherTenant.siteId(), a.sessionId());
         ProcessorTestInfra.send(List.of(
                 Fixtures.eventRecord(a, Fixtures.click(NOW.toEpochMilli(), "a", null)),
                 Fixtures.eventRecord(sameSessionOtherTenant, Fixtures.click(NOW.toEpochMilli(), "b", null)),

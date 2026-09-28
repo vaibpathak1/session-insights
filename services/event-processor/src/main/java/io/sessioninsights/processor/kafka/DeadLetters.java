@@ -10,6 +10,7 @@ import org.apache.kafka.common.header.internals.RecordHeader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.kafka.core.KafkaOperations;
+import org.springframework.kafka.support.KafkaUtils;
 import org.springframework.kafka.listener.ConsumerRecordRecoverer;
 import org.springframework.kafka.listener.DeadLetterPublishingRecoverer;
 
@@ -18,9 +19,10 @@ import java.util.Map;
 
 /**
  * Publishes poison records to {@code <topic>.dlt} with the original key, value bytes and
- * headers, plus Spring's {@code kafka_dlt-original-*} topic/partition/offset/timestamp headers
- * and {@link WireHeaders#DLT_REASON}. Exception message and stack trace headers are omitted:
- * the only exception detail is the reason code, so no payload can leak into the DLT headers.
+ * headers, plus Spring's {@code kafka_dlt-original-*} topic/partition/offset/timestamp headers,
+ * {@link WireHeaders#DLT_REASON} and {@link WireHeaders#DLT_CONSUMER} (the consumer group).
+ * Exception message and stack trace headers are omitted: the only exception detail is the
+ * reason code, so no payload can leak into the DLT headers.
  */
 public final class DeadLetters {
 
@@ -41,6 +43,11 @@ public final class DeadLetters {
                     PoisonRecordException.class.getName().getBytes(StandardCharsets.UTF_8)));
             headers.add(new RecordHeader(WireHeaders.DLT_REASON,
                     reason(exception).getBytes(StandardCharsets.UTF_8)));
+            // several consumer groups read one topic (events writer, session tracker)
+            String group = KafkaUtils.getConsumerGroupId();
+            if (group != null) {
+                headers.add(new RecordHeader(WireHeaders.DLT_CONSUMER, group.getBytes(StandardCharsets.UTF_8)));
+            }
         });
         return (record, exception) -> {
             publisher.accept(record, exception);
