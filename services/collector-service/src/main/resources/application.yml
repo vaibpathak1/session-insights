@@ -12,6 +12,9 @@ spring:
     password: ${POSTGRES_COLLECTOR_PASSWORD:insights_collector_dev_pw}
     hikari:
       maximum-pool-size: 4    # lookups are cached; the pool only sees cache misses
+      # create the pool without waiting for PostgreSQL: the warm-up at startup must never
+      # block or fail on it (task 5.0, PoolWarmUp)
+      initialization-fail-timeout: -1
   # ADR-0004 producer settings. A 202 is sent only after every record of the request is
   # acknowledged by all in-sync replicas; the timeouts keep an unreachable Kafka a fast 503.
   kafka:
