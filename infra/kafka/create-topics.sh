@@ -18,7 +18,9 @@ create() {
 create telemetry.events.v1        "$P" --config retention.ms=259200000
 create telemetry.events.v1.dlt    1    --config retention.ms=1209600000
 
-# Replay: compressed rrweb chunks, larger messages. Key = sessionId.
+# Replay: rrweb chunks, larger messages. Key = sessionId. max.message.bytes applies to the
+# zstd-compressed batch: the collector accepts chunks up to 16 MB of JSON and returns 413 when
+# one does not fit even compressed (Phase 4b).
 create replay.chunks.v1           "$P" --config retention.ms=259200000 --config max.message.bytes=4194304
 create replay.chunks.v1.dlt       1    --config retention.ms=1209600000 --config max.message.bytes=4194304
 

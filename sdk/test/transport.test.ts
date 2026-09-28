@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vite
 import { Client } from '../src/client';
 import { resolveConfig } from '../src/config';
 import { createLogger } from '../src/log';
-import { MAX_QUEUE_BYTES, Outbox } from '../src/outbox';
+import { MAX_QUEUE_BYTES, MAX_SNAPSHOT_CHUNK_BYTES, Outbox } from '../src/outbox';
 import { RRWEB_FULL_SNAPSHOT, RRWEB_META } from '../src/recorder';
 import type { SealedChunk } from '../src/replay';
 import {
@@ -12,7 +12,7 @@ import {
   Sender,
   type FatalReason,
 } from '../src/sender';
-import { backoffMs, classify, parseRetryAfter, Transport } from '../src/transport';
+import { backoffMs, classify, parseRetryAfter, Transport, utf8Length } from '../src/transport';
 import type { EventBatch, ReplayBatch, TelemetryEvent } from '../src/wire';
 import { loadSdk, OPTIONS } from './helpers';
 
@@ -447,8 +447,87 @@ describe('bounded queue', () => {
     expect(outbox.pendingEvents.slice(-1)[0]!.event.ts).toBe(event(199).ts);
   });
 
-  it('defaults to 2 MB', () => {
+  it('defaults to 2 MB, with one full snapshot of up to 16 MB outside the bound', () => {
     expect(MAX_QUEUE_BYTES).toBe(2 * 1024 * 1024);
+    expect(MAX_SNAPSHOT_CHUNK_BYTES).toBe(16 * 1024 * 1024);
+  });
+
+  const snapshot = (seq: number, size: number): SealedChunk => ({
+    ...chunk(S1, seq, size),
+    fullSnapshot: true,
+  });
+
+  it('keeps a full snapshot larger than the bound without evicting anything', () => {
+    const dropped = vi.fn();
+    const tooLarge = vi.fn();
+    const outbox = new Outbox('0.1.0', dropped, 10_000, tooLarge, 100_000);
+    for (let i = 0; i < 5; i++) outbox.addEvent(S1, ANON, event(i));
+    outbox.addChunk(snapshot(0, 60_000)); // 6x the bound
+    outbox.addChunk(chunk(S1, 1, 2_000));
+    expect(outbox.pendingChunks.map((c) => c.chunkSeq)).toEqual([0, 1]);
+    expect(outbox.size.events).toBe(5);
+    expect(outbox.dropped).toEqual({ events: 0, replayChunks: 0 });
+    expect(dropped).not.toHaveBeenCalled();
+    expect(tooLarge).not.toHaveBeenCalled();
+    // the bound still applies to everything else: the snapshot is never the one evicted
+    for (let seq = 2; seq < 8; seq++) outbox.addChunk(chunk(S1, seq, 2_500));
+    expect(outbox.pendingChunks[0]!.chunkSeq).toBe(0);
+    expect(outbox.dropped.replayChunks).toBeGreaterThan(0);
+    // events first, then the snapshot, over a normal request
+    outbox.remove(outbox.next()!);
+    const next = outbox.next()!;
+    expect(next.path === 'replay' && next.chunk.chunkSeq).toBe(0);
+    outbox.remove(next);
+    expect(outbox.size.bytes).toBeLessThanOrEqual(10_000);
+  });
+
+  it('drops a full snapshot over the limit once, without asking for another snapshot', () => {
+    const dropped = vi.fn();
+    const tooLarge = vi.fn();
+    const outbox = new Outbox('0.1.0', dropped, 10_000, tooLarge, 50_000);
+    outbox.addEvent(S1, ANON, event(1));
+    outbox.addChunk(snapshot(0, 60_000));
+    expect(outbox.pendingChunks).toEqual([]);
+    expect(outbox.size.events).toBe(1);
+    expect(outbox.dropped.replayChunks).toBe(1);
+    expect(tooLarge).toHaveBeenCalledTimes(1);
+    expect(tooLarge.mock.calls[0]![0]).toBeGreaterThan(50_000);
+    expect(dropped).not.toHaveBeenCalled(); // no recovery snapshot: it would be too large again
+  });
+
+  it('measures the snapshot limit in UTF-8 bytes', () => {
+    const tooLarge = vi.fn();
+    const outbox = new Outbox('0.1.0', () => {}, 10_000, tooLarge, 30_000);
+    const body = JSON.stringify({ sessionId: S1, chunkSeq: 0, events: ['€'.repeat(12_000)] });
+    outbox.addChunk({ sessionId: S1, chunkSeq: 0, body, bytes: body.length, fullSnapshot: true });
+    expect(tooLarge).toHaveBeenCalledTimes(1); // ~12k UTF-16 units, ~36 kB of UTF-8
+  });
+
+  it('a newer full snapshot takes the place outside the bound; the older one counts normally', () => {
+    const outbox = new Outbox(
+      '0.1.0',
+      () => {},
+      10_000,
+      () => {},
+      100_000,
+    );
+    outbox.addChunk(snapshot(0, 30_000));
+    outbox.addChunk(snapshot(1, 30_000));
+    expect(outbox.pendingChunks.map((c) => c.chunkSeq)).toEqual([1]); // the old one no longer fits
+  });
+
+  it('never beacons a large snapshot', () => {
+    const outbox = new Outbox(
+      '0.1.0',
+      () => {},
+      10_000,
+      () => {},
+      100_000,
+    );
+    outbox.addEvent(S1, ANON, event(1));
+    outbox.addChunk(snapshot(0, 70_000));
+    const planned = outbox.forBeacon(BEACON_BUDGET_BYTES, utf8Length);
+    expect(planned.map((r) => r.path)).toEqual(['events']);
   });
 });
 
@@ -540,6 +619,52 @@ describe('client end to end (jsdom, stubbed network)', () => {
       warn.mockRestore();
     },
   );
+
+  it('sends a ~6 MB full snapshot in one normal request, without dropping or re-snapshotting', async () => {
+    responses = [202];
+    document.body.insertAdjacentHTML(
+      'beforeend',
+      `<p id="big">${'lorem ipsum '.repeat(512 * 1024)}</p>`,
+    );
+    const warn = vi.spyOn(console, 'info').mockImplementation(() => {});
+    const sdk = await loadSdk();
+    sdk.init({ ...OPTIONS, collectorUrl: `https://${host}`, debug: true });
+    await vi.waitFor(() => expect(calls.some((x) => x.url.includes('/v1/replay'))).toBe(true), {
+      timeout: 10_000,
+    });
+    await settle();
+    const replays = calls.filter((x) => x.url.includes('/v1/replay'));
+    expect(replays).toHaveLength(1); // one normal fetch, not split, not beaconed
+    const batch = JSON.parse(replays[0]!.body) as ReplayBatch;
+    expect(batch.chunkSeq).toBe(0);
+    expect(replays[0]!.body.length).toBeGreaterThan(6_000_000);
+    expect(warn.mock.calls.flat().join(' ')).not.toContain('queue full');
+    warn.mockRestore();
+    document.getElementById('big')!.remove();
+  });
+
+  it('a full snapshot over 16 MB turns replay off for the page; events keep flowing', async () => {
+    responses = [202];
+    document.body.insertAdjacentHTML(
+      'beforeend',
+      `<p id="huge">${'x'.repeat(17 * 1024 * 1024)}</p>`,
+    );
+    const logged = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const sdk = await loadSdk();
+    sdk.init({ ...OPTIONS, collectorUrl: `https://${host}`, debug: true, flushIntervalMs: 1000 });
+    document.getElementById('b')!.click();
+    await vi.waitFor(() => expect(calls.some((x) => x.url.includes('/v1/events'))).toBe(true), {
+      timeout: 10_000,
+    });
+    document.getElementById('b')!.click();
+    await new Promise((r) => setTimeout(r, 1500)); // another flush interval
+    expect(calls.filter((x) => x.url.includes('/v1/replay'))).toEqual([]);
+    const lines = logged.mock.calls.map((a) => a.join(' ')).filter((l) => l.includes('replay off'));
+    expect(lines).toHaveLength(1); // once: no snapshot loop
+    expect(sdk.getSessionId()).not.toBeNull(); // still running
+    logged.mockRestore();
+    document.getElementById('huge')!.remove();
+  });
 
   it('takes a new full snapshot once the queue drains after dropping replay data', async () => {
     responses = [202];

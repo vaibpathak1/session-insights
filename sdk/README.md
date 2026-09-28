@@ -118,6 +118,10 @@ Masking happens in the browser, before anything is sent; the server redacts agai
 - Everything waiting to be sent is held in memory, bounded at 2 MB; when full, the oldest
   replay data is dropped first (then the oldest events), and a new full snapshot is taken
   once the queue drains so replay can resume.
+- Large pages: the newest full snapshot is held outside that bound, up to 16 MB of JSON
+  (the collector's replay limit), and sent as one gzip-compressed `fetch` (never a beacon).
+  A snapshot over 16 MB is dropped and replay turns off for that page (events continue);
+  with `debug: true` the console says "full snapshot too large … replay off for this page".
 
 ## Content Security Policy
 

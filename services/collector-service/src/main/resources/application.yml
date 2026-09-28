@@ -28,8 +28,12 @@ spring:
         max.block.ms: 2000          # metadata wait when Kafka is unreachable
         request.timeout.ms: 3000
         delivery.timeout.ms: 5000   # >= linger.ms + request.timeout.ms
-        # replay chunks are up to 4 MB (topic max.message.bytes) plus the envelope
-        max.request.size: 4259840
+        # Replay chunks are up to 16 MB decompressed (collector.limits.max-replay-body), plus the
+        # envelope. The producer checks this limit before compression; the topic's
+        # max.message.bytes (4 MB) is checked by the broker on the zstd-compressed batch, and a
+        # record that still does not fit fails with RecordTooLargeException → 413 (Phase 4b).
+        max.request.size: 17825792   # 17 MB
+        buffer.memory: 67108864      # 64 MB: room for a few large chunks in flight
 
 server:
   port: 8081
@@ -39,7 +43,7 @@ collector:
   limits:
     max-events: 500
     max-events-body: 1MB       # decompressed
-    max-replay-body: 4MB       # decompressed; = replay.chunks.v1 max.message.bytes
+    max-replay-body: 16MB      # decompressed; must still fit replay.chunks.v1 (4 MB) after zstd
     max-event-age: 24h         # older client timestamps are dropped and counted
     max-clock-skew: 5m         # so are timestamps further in the future
   key-cache:                   # ADR-0010: revocation takes effect within positive-ttl

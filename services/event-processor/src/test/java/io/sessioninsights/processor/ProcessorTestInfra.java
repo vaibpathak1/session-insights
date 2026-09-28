@@ -151,7 +151,9 @@ public final class ProcessorTestInfra {
         return new KafkaProducer<>(Map.of(
                 ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, KAFKA.getBootstrapServers(),
                 ProducerConfig.ACKS_CONFIG, "all",
-                ProducerConfig.MAX_REQUEST_SIZE_CONFIG, 4259840),
+                // like the collector: 16 MB chunks, compressed so they fit the 4 MB topic
+                ProducerConfig.COMPRESSION_TYPE_CONFIG, "zstd",
+                ProducerConfig.MAX_REQUEST_SIZE_CONFIG, 17825792),
                 new StringSerializer(), new ByteArraySerializer());
     }
 

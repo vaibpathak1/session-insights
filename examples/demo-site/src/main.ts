@@ -1,5 +1,22 @@
 import * as SessionInsights from "@session-insights/sdk";
 
+// `?big=<MB>` adds a large table before the SDK starts, so the first full snapshot is about
+// that size (demo only: the e2e large-snapshot test uses it)
+const bigMb = Number(new URLSearchParams(location.search).get("big") ?? 0);
+if (bigMb > 0) {
+  const rows: string[] = [];
+  const rowCount = Math.round((bigMb * 1024 * 1024) / 330); // ~330 bytes of rrweb JSON per row
+  for (let i = 0; i < rowCount; i++) {
+    rows.push(
+      `<tr><td>row ${i}</td><td>catalogue item ${i % 997}: lorem ipsum dolor sit amet</td></tr>`,
+    );
+  }
+  const section = document.createElement("section");
+  section.id = "big-table";
+  section.innerHTML = `<table>${rows.join("")}</table>`;
+  document.body.appendChild(section);
+}
+
 // `?siteKey=` overrides the configured key (demo only: the e2e wrong-key test uses it)
 const siteKey =
   new URLSearchParams(location.search).get("siteKey") ??

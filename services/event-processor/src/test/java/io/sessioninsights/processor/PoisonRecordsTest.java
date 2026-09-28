@@ -114,6 +114,20 @@ class PoisonRecordsTest extends ProcessorIntegrationTest {
         assertThat(manifestStore.findChunks(s.tenantId(), s.sessionId())).isEmpty();
     }
 
+    /** Phase 4b: the DLT producer takes chunks as large as the collector accepts. */
+    @Test
+    void largePoisonChunkIsDeadLetteredIntact() {
+        Session s = Session.random();
+        var envelope = new io.sessioninsights.common.wire.ReplayEnvelope(1, s.tenantId(), s.siteId(), s.sessionId(), -1,
+                NOW, null, Fixtures.largeSnapshot(NOW.toEpochMilli(), 10 * 1024 * 1024));
+        ProducerRecord<String, byte[]> record = Fixtures.chunkRecord(s, envelope);
+        ProcessorTestInfra.send(List.of(record));
+
+        ConsumerRecord<String, byte[]> dead = singleDeadLetter(Topics.REPLAY_CHUNKS_DLT, s);
+        assertThat(reason(dead)).isEqualTo("invalid_chunk");
+        assertThat(dead.value()).isEqualTo(record.value());
+    }
+
     private static ConsumerRecord<String, byte[]> singleDeadLetter(String dlt, Session s) {
         List<ConsumerRecord<String, byte[]>> dead = ProcessorTestInfra.records(dlt, s.key(), 1, WAIT);
         assertThat(dead).hasSize(1);

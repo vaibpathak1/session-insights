@@ -4,7 +4,7 @@ import { listen } from './dom';
 import { guarded } from './guard';
 import { uuid } from './ids';
 import type { Logger } from './log';
-import { Outbox, type QueuedEvent } from './outbox';
+import { MAX_SNAPSHOT_CHUNK_BYTES, Outbox, type QueuedEvent } from './outbox';
 import { RRWEB_FULL_SNAPSHOT, startRecorder, type Recorder, type RrwebEvent } from './recorder';
 import { ReplayBuffer, type SealedChunk } from './replay';
 import { whenIdle } from './schedule';
@@ -27,6 +27,8 @@ export class Client {
   private sender!: Sender;
   /** Replay data was dropped from the full queue; take a full snapshot once it drains. */
   private needsSnapshot = false;
+  /** A full snapshot exceeded the collector's limit: replay stays off for this page. */
+  private replayOff = false;
   private readonly disposers: Array<() => void> = [];
 
   constructor(
@@ -40,10 +42,15 @@ export class Client {
       session: browserStore('sessionStorage'),
       sampleRate: this.config.sampleRate,
     });
-    this.outbox = new Outbox(__SDK_VERSION__, () => {
-      this.needsSnapshot = true;
-      this.log.info('queue full: oldest replay data dropped');
-    });
+    this.outbox = new Outbox(
+      __SDK_VERSION__,
+      () => {
+        this.needsSnapshot = true;
+        this.log.info('queue full: oldest replay data dropped');
+      },
+      undefined,
+      (bytes) => this.stopReplay(bytes),
+    );
     this.sender = new Sender(
       this.outbox,
       new Transport({
@@ -183,13 +190,32 @@ export class Client {
         log: this.log,
       });
     }
-    if (!this.recorder) {
-      this.recorder = startRecorder({
+    if (!this.recorder && !this.replayOff) {
+      const recorder = startRecorder({
         maskAllText: this.config.maskAllText,
         emit: guarded((e: RrwebEvent) => this.onReplayEvent(e), this.log),
         onError: (e) => this.log.warn('recorder error (ignored)', e),
       });
+      // the initial snapshot is emitted during startRecorder: it may already have been too large
+      if (this.replayOff) recorder?.stop();
+      else this.recorder = recorder;
     }
+  }
+
+  /**
+   * The page's DOM is too large to replay (full snapshot over the collector's limit). Taking
+   * another snapshot would fail the same way, so replay stops for this page; events go on.
+   */
+  private stopReplay(bytes: number): void {
+    this.replayOff = true;
+    this.needsSnapshot = false;
+    this.recorder?.stop();
+    this.recorder = null;
+    this.replay.clear();
+    this.log.once(
+      'snapshot-too-large',
+      `full snapshot too large (${(bytes / 1024 / 1024).toFixed(1)} MB > ${MAX_SNAPSHOT_CHUNK_BYTES / 1024 / 1024} MB); replay off for this page`,
+    );
   }
 
   private stopCapturing(): void {
@@ -211,7 +237,7 @@ export class Client {
   private onReplayEvent(event: RrwebEvent): void {
     // While idle, events are dropped: the next activity starts a new session with a
     // full snapshot, so nothing is lost for replay.
-    if (!this.running || !this.session.sampled || this.session.isIdle()) return;
+    if (!this.running || this.replayOff || !this.session.sampled || this.session.isIdle()) return;
     this.replay.add(this.session.sessionId, event);
     if (event.type === RRWEB_FULL_SNAPSHOT) {
       this.replay.seal(); // ship snapshots (chunk 0) promptly, not at the next interval

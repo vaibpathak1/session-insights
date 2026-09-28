@@ -31,8 +31,11 @@ spring:
       properties:
         enable.idempotence: true
         linger.ms: 20
-        # replay chunks are up to 4 MB (topic max.message.bytes) plus headers
-        max.request.size: 4259840
+        # Replay chunks are up to 16 MB decompressed (collector limit, Phase 4b). The producer
+        # checks this before compression; the .dlt topic's max.message.bytes is checked on the
+        # compressed batch. Below 16 MB a large poison chunk could never be dead-lettered and
+        # would be retried forever.
+        max.request.size: 17825792   # 17 MB
 
 server:
   port: 8082
@@ -49,8 +52,11 @@ processor:
       fetch-max-wait-ms: 500
     replay:
       group-id: event-processor.replay
-      max-poll-records: 100        # chunks are up to 4 MB each
+      max-poll-records: 100
       fetch-max-wait-ms: 500
+      # bounds what one poll holds: compressed batches, up to 16 MB each once decompressed
+      fetch-max-bytes: 8388608            # 8 MB per fetch
+      max-partition-fetch-bytes: 4194304  # 4 MB per partition (a larger batch still comes alone)
   clickhouse:
     endpoint: ${CLICKHOUSE_URL:http://localhost:8123}
     database: ${CLICKHOUSE_DB:insights}

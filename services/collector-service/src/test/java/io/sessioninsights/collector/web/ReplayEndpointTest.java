@@ -9,6 +9,8 @@ import io.sessioninsights.common.wire.WireJson;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.junit.jupiter.api.Test;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
@@ -66,29 +68,80 @@ class ReplayEndpointTest extends CollectorIntegrationTest {
         assertThat(CollectorTestInfra.records(Topics.REPLAY_CHUNKS, session.toString(), 0)).isEmpty();
     }
 
-    /** Replay chunks may be up to 4 MB, far above the 1 MB telemetry limit and Kafka's 1 MB default. */
+    /**
+     * Phase 4b: a large full snapshot (~10 MB of DOM JSON) is accepted. It is far over the
+     * topic's 4 MB max.message.bytes uncompressed, but fits once the producer compresses it.
+     */
     @Test
-    void chunkNearTheReplayLimitIsAccepted() {
+    void largeCompressibleSnapshotIsAcceptedAndProduced() {
+        SiteFixture site = newSite();
+        UUID session = UUID.randomUUID();
+        String body = snapshotJson(session, 10 * 1024 * 1024);
+
+        HttpResponse<String> response = post("/v1/replay").key(site).body(body).send();
+
+        assertThat(response.statusCode()).isEqualTo(202);
+        List<ConsumerRecord<String, byte[]>> records = CollectorTestInfra.records(Topics.REPLAY_CHUNKS, session.toString(), 1);
+        assertThat(records).hasSize(1);
+        ReplayEnvelope envelope = WireJson.mapper().readValue(records.getFirst().value(), ReplayEnvelope.class);
+        assertThat(envelope.events()).isEqualTo(WireJson.mapper().readTree(body).get("events"));
+        assertThat(records.getFirst().serializedValueSize()).isGreaterThan(10 * 1024 * 1024);
+    }
+
+    /** Within the 16 MB body limit, but incompressible: the compressed record cannot fit the topic → 413. */
+    @Test
+    void incompressibleChunkThatCannotFitTheTopicIs413AndNothingIsProduced() {
         SiteFixture site = newSite();
         UUID session = UUID.randomUUID();
 
         HttpResponse<String> response = post("/v1/replay").key(site)
-                .body(chunkJson(session, 4 * 1024 * 1024 - 1024))
+                .body(chunkJson(session, 16 * 1024 * 1024 - 1024))
                 .send();
+
+        assertThat(response.statusCode()).isEqualTo(413);
+        assertThat(response.body()).isEqualTo("{\"error\":\"too_large\"}");
+        assertThat(CollectorTestInfra.records(Topics.REPLAY_CHUNKS, session.toString(), 0)).isEmpty();
+    }
+
+    /** An incompressible chunk that does fit after compression is still fine (~3 MB). */
+    @Test
+    void incompressibleChunkThatFitsIsAccepted() {
+        SiteFixture site = newSite();
+        UUID session = UUID.randomUUID();
+
+        HttpResponse<String> response = post("/v1/replay").key(site).body(chunkJson(session, 3 * 1024 * 1024)).send();
 
         assertThat(response.statusCode()).isEqualTo(202);
         assertThat(CollectorTestInfra.records(Topics.REPLAY_CHUNKS, session.toString(), 1)).hasSize(1);
     }
 
     @Test
-    void chunkOverTheReplayLimitIs413() {
+    void bodyOverSixteenMegabytesDecompressedIs413() throws IOException {
         SiteFixture site = newSite();
+        UUID session = UUID.randomUUID();
+        byte[] json = snapshotJson(session, 16 * 1024 * 1024 + 4096).getBytes(StandardCharsets.UTF_8);
+        assertThat(json.length).isGreaterThan(16 * 1024 * 1024);
 
-        HttpResponse<String> response = post("/v1/replay").key(site)
-                .body(chunkJson(UUID.randomUUID(), 4 * 1024 * 1024 + 16))
-                .send();
+        HttpResponse<String> plain = post("/v1/replay").key(site).body(json).send();
+        HttpResponse<String> gzipped = post("/v1/replay").key(site).header("Content-Encoding", "gzip").body(gzip(json)).send();
 
-        assertThat(response.statusCode()).isEqualTo(413);
+        assertThat(plain.statusCode()).isEqualTo(413);
+        assertThat(gzipped.statusCode()).isEqualTo(413);   // measured after decompression
+        assertThat(CollectorTestInfra.records(Topics.REPLAY_CHUNKS, session.toString(), 0)).isEmpty();
+    }
+
+    /** A chunk-0 ReplayBatch of about {@code bytes} bytes: Meta + a FullSnapshot of repetitive DOM JSON. */
+    static String snapshotJson(UUID session, int bytes) {
+        String head = "{\"sessionId\":\"%s\",\"chunkSeq\":0,\"events\":[{\"type\":4,\"timestamp\":1,\"data\":{\"href\":\"http://localhost/\"}},{\"type\":2,\"timestamp\":2,\"data\":{\"node\":{\"type\":0,\"childNodes\":[".formatted(session);
+        String tail = "{\"type\":3,\"textContent\":\"end\",\"id\":0}]}}}]}";
+        StringBuilder json = new StringBuilder(bytes + 256).append(head);
+        int id = 1;
+        while (json.length() + tail.length() < bytes - 120) {
+            json.append("{\"type\":2,\"tagName\":\"td\",\"attributes\":{\"class\":\"cell\"},\"childNodes\":[{\"type\":3,\"textContent\":\"row ")
+                    .append(id % 997).append("\",\"id\":").append(id + 1).append("}],\"id\":").append(id).append("},");
+            id += 2;
+        }
+        return json.append(tail).toString();
     }
 
     /** A ReplayBatch of about {@code bytes} bytes: one rrweb event padded with random base64 text. */
@@ -99,5 +152,13 @@ class ReplayEndpointTest extends CollectorIntegrationTest {
         new java.util.Random(42).nextBytes(random);
         String padding = Base64.getEncoder().encodeToString(random).substring(0, bytes - head.length() - tail.length());
         return head + padding + tail;
+    }
+
+    private static byte[] gzip(byte[] bytes) throws IOException {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        try (var gz = new java.util.zip.GZIPOutputStream(out)) {
+            gz.write(bytes);
+        }
+        return out.toByteArray();
     }
 }

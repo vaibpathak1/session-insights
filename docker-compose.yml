@@ -27,7 +27,7 @@ services:
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"   # topics are declared explicitly in kafka-init
       KAFKA_LOG_RETENTION_HOURS: 72              # Kafka is a buffer, not storage (ADR-0004)
-      KAFKA_MESSAGE_MAX_BYTES: 4194304           # 4 MB, for replay chunks
+      KAFKA_MESSAGE_MAX_BYTES: 4194304           # 4 MB compressed batch: replay chunks up to 16 MB of JSON fit after zstd
       KAFKA_HEAP_OPTS: "-Xms512m -Xmx1g"
     volumes:
       - kafka-data:/var/lib/kafka/data

@@ -19,8 +19,9 @@ public record CollectorProperties(
     public record Limits(
             @DefaultValue("500") int maxEvents,
             @DefaultValue("1MB") DataSize maxEventsBody,
-            // matches max.message.bytes of replay.chunks.v1 (infra/kafka/create-topics.sh)
-            @DefaultValue("4MB") DataSize maxReplayBody,
+            // decompressed; the zstd-compressed Kafka record must still fit replay.chunks.v1
+            // max.message.bytes (4 MB, infra/kafka/create-topics.sh), enforced by the broker → 413
+            @DefaultValue("16MB") DataSize maxReplayBody,
             @DefaultValue("24h") Duration maxEventAge,
             @DefaultValue("5m") Duration maxClockSkew,
             @DefaultValue("256") int maxSiteKeyLength,

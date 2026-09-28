@@ -72,6 +72,25 @@ class ReplayPipelineTest extends ProcessorIntegrationTest {
                 .prefix("tenants/" + s.tenantId() + "/")).keyCount()).isEqualTo(1);
     }
 
+    /** Phase 4b: a ~10 MB full snapshot (the collector's limit is 16 MB) is stored intact. */
+    @Test
+    void largeFullSnapshotBecomesOneObjectThatDecompressesByteIdentical() {
+        Session s = Session.random();
+        JsonNode events = Fixtures.largeSnapshot(NOW.toEpochMilli(), 10 * 1024 * 1024);
+        byte[] original = WireJson.mapper().writeValueAsBytes(events);
+        assertThat(original.length).isGreaterThan(10 * 1024 * 1024 - 1024);
+        ProcessorTestInfra.send(List.of(Fixtures.chunkRecord(s, Fixtures.chunk(s, 0, events))));
+
+        ManifestRow m = await().atMost(Duration.ofSeconds(60))
+                .until(() -> manifestStore.findChunks(s.tenantId(), s.sessionId()), rows -> rows.size() == 1)
+                .getFirst();
+        byte[] object = objectStore.get(s.tenantId(), s.sessionId(), 0);
+        assertThat(decompress(object)).isEqualTo(original);
+        assertThat(m.hasFullSnapshot()).isTrue();
+        assertThat(m.eventCount()).isEqualTo(2);
+        assertThat(m.compressedBytes()).isEqualTo(object.length).isLessThan(original.length / 10);
+    }
+
     private static long rawManifestRows(Session s) {
         return CH.queryAll("SELECT count() AS c FROM replay_chunks WHERE tenant_id = {t:UUID} AND session_id = {s:UUID}",
                 Map.of("t", s.tenantId(), "s", s.sessionId())).getFirst().getLong("c");
