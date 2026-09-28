@@ -132,6 +132,8 @@ describe('contract fixtures', () => {
     // pin timestamps so the fixture is stable; the contract is the shape, not the clock
     const batch = JSON.parse(sealed!.body) as { events: Array<{ timestamp: number }> };
     batch.events.forEach((e, i) => (e.timestamp = T0 + i));
+    // raw events only: the base64 `payload` form was removed from the contract (Phase 4b)
+    expect(Object.keys(batch).sort()).toEqual(['chunkSeq', 'events', 'sessionId']);
     check('replay-batch.json', JSON.stringify(batch));
   });
 });

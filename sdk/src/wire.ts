@@ -32,7 +32,7 @@ export interface EventBatch {
   events: TelemetryEvent[];
 }
 
-/** `POST /v1/replay` body: one chunk of raw rrweb events (`events`, not base64 `payload`). */
+/** `POST /v1/replay` body: one chunk of raw rrweb events (the only form the collector accepts). */
 export interface ReplayBatch {
   sessionId: string;
   chunkSeq: number;

@@ -91,7 +91,7 @@ public class IngestService {
         validator.validate(batch);
 
         ReplayEnvelope envelope = new ReplayEnvelope(WireHeaders.CURRENT_SCHEMA_VERSION, site.tenantId(), site.siteId(),
-                batch.sessionId(), batch.chunkSeq(), clock.instant(), batch.payload(), batch.events());
+                batch.sessionId(), batch.chunkSeq(), clock.instant(), null, batch.events());
         publisher.publish(Topics.REPLAY_CHUNKS, List.of(record(Topics.REPLAY_CHUNKS, batch.sessionId(), site.tenantId(), envelope)));
         return new IngestResult(1, 0);
     }

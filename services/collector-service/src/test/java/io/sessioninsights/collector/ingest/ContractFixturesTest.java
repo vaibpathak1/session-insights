@@ -64,7 +64,8 @@ class ContractFixturesTest {
 
         assertThat(batch.siteKey()).isNull();
         assertThat(batch.chunkSeq()).isZero();
-        assertThat(batch.payload()).as("the SDK sends raw events, compressed at the HTTP layer").isNull();
+        assertThat(WireJson.mapper().readTree(body).has("payload"))
+                .as("raw events only; the base64 payload form was removed (Phase 4b)").isFalse();
         assertThat(batch.events().isArray()).isTrue();
         // chunk 0 starts with rrweb Meta (4) + FullSnapshot (2)
         assertThat(batch.events().get(0).get("type").asInt()).isEqualTo(4);
