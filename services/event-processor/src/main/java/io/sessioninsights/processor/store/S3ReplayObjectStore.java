@@ -15,8 +15,12 @@ import java.util.UUID;
  */
 public class S3ReplayObjectStore implements ReplayObjectStore {
 
-    private static final String CONTENT_TYPE = "application/json";
-    private static final String CONTENT_ENCODING = "zstd";
+    /**
+     * The object is a zstd frame of JSON, typed as such. Deliberately no {@code Content-Encoding:
+     * zstd}: HTTP clients would then decompress transparently, or fail where zstd is unsupported
+     * (e.g. Safari); the reader decompresses explicitly, as the {@code .json.zst} key says.
+     */
+    private static final String CONTENT_TYPE = "application/zstd";
 
     private final S3Client s3;
     private final String bucket;
@@ -30,7 +34,7 @@ public class S3ReplayObjectStore implements ReplayObjectStore {
     public void put(UUID tenantId, UUID sessionId, int chunkSeq, byte[] zstdJson) {
         String key = ReplayObjectStore.objectKey(tenantId, sessionId, chunkSeq);
         try {
-            s3.putObject(b -> b.bucket(bucket).key(key).contentType(CONTENT_TYPE).contentEncoding(CONTENT_ENCODING),
+            s3.putObject(b -> b.bucket(bucket).key(key).contentType(CONTENT_TYPE),
                     RequestBody.fromBytes(zstdJson));
         } catch (RuntimeException e) {
             throw new StoreUnavailableException(Store.S3, describe(e));
