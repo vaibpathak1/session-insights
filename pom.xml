@@ -44,6 +44,10 @@
         <clickhouse-client.version>0.10.0</clickhouse-client.version>
         <!-- In-memory token buckets for collector rate limiting (Apache-2.0); not in the Boot BOM. -->
         <bucket4j.version>8.20.0</bucket4j.version>
+        <!-- ADR-0003: S3 API via AWS SDK v2 (Apache-2.0); not in the Boot BOM. -->
+        <aws-sdk.version>2.55.6</aws-sdk.version>
+        <!-- zstd for replay chunk objects (BSD-2-Clause). Also pins the version kafka-clients pulls in. -->
+        <zstd-jni.version>1.5.7-20</zstd-jni.version>
         <!-- ADR-0001: surface virtual-thread pinning (Java 21) in local runs and tests -->
         <pinning.trace>-Djdk.tracePinnedThreads=short</pinning.trace>
     </properties>
@@ -54,6 +58,13 @@
                 <groupId>org.springframework.ai</groupId>
                 <artifactId>spring-ai-bom</artifactId>
                 <version>${spring-ai.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>software.amazon.awssdk</groupId>
+                <artifactId>bom</artifactId>
+                <version>${aws-sdk.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
@@ -83,6 +94,11 @@
                 <groupId>com.clickhouse</groupId>
                 <artifactId>client-v2</artifactId>
                 <version>${clickhouse-client.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.luben</groupId>
+                <artifactId>zstd-jni</artifactId>
+                <version>${zstd-jni.version}</version>
             </dependency>
             <dependency>
                 <groupId>com.bucket4j</groupId>
