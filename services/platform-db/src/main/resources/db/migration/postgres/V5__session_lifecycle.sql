@@ -8,9 +8,6 @@
 ALTER TABLE user_session ADD COLUMN entry_at timestamptz;
 -- Set by the tracker when an event arrives for a closed session; the closer recomputes.
 ALTER TABLE user_session ADD COLUMN needs_recompute boolean NOT NULL DEFAULT false;
--- First time the closer claimed a still-open session that had no ClickHouse rows yet; after
--- twice the idle timeout it closes with zero counters instead of being reclaimed forever.
-ALTER TABLE user_session ADD COLUMN close_deferred_since timestamptz;
 
 -- The tracker upserts visitors by site + anonymous id (identify() is a later phase).
 DROP INDEX end_user_site_anonymous_idx;
