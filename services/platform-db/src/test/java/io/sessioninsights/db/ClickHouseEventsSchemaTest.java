@@ -27,7 +27,7 @@ class ClickHouseEventsSchemaTest {
     @BeforeAll
     static void migrate() {
         client = TestContainers.clickhouseClient(clickhouse);
-        assertThat(new ClickHouseMigrator(client).migrate()).isEqualTo(1);
+        assertThat(new ClickHouseMigrator(client).migrate()).isEqualTo(2);
         assertThat(new ClickHouseMigrator(client).migrate()).isZero();
     }
 
@@ -68,6 +68,24 @@ class ClickHouseEventsSchemaTest {
         Map<String, Object> params = Map.of("t", tenantId, "e", eventId);
         assertThat(client.queryAll(count.formatted(""), params).getFirst().getLong("c")).isEqualTo(2);
         assertThat(client.queryAll(count.formatted("FINAL"), params).getFirst().getLong("c")).isEqualTo(1);
+    }
+
+    @Test
+    void retriedInsertWithSameDeduplicationTokenIsWrittenOnce() {
+        UUID tenantId = UUID.randomUUID();
+        // settings cannot be query parameters; the token is a generated UUID, safe to inline
+        String insert = """
+                INSERT INTO events (event_id, tenant_id, site_id, session_id, anonymous_id, ts, ingested_at, event_type, props)
+                SETTINGS insert_deduplication_token = 'test:%s'
+                VALUES (generateUUIDv4(), {t:UUID}, generateUUIDv4(), generateUUIDv4(), 'anon',
+                        toDateTime64('2026-09-27 10:00:00.000', 3), now64(3), 'CLICK', '{}')""".formatted(UUID.randomUUID());
+        for (int i = 0; i < 2; i++) {
+            exec(insert, Map.of("t", tenantId));
+        }
+
+        // no FINAL: the second insert was dropped at insert time, not merged away later
+        assertThat(client.queryAll("SELECT count() AS c FROM events WHERE tenant_id = {t:UUID}",
+                Map.of("t", tenantId)).getFirst().getLong("c")).isEqualTo(1);
     }
 
     private static void exec(String sql, Map<String, Object> params) {
