@@ -11,6 +11,8 @@ export interface SealedChunk {
   body: string;
   /** Approximate size (UTF-16 length of `body`). */
   bytes: number;
+  /** Starts with Meta + FullSnapshot: may be large, and replay of what follows depends on it. */
+  fullSnapshot?: boolean;
 }
 
 /**
@@ -23,6 +25,7 @@ export class ReplayBuffer {
   private parts: string[] = [];
   private bytes = 0;
   private sessionId: string | null = null;
+  private startsWithSnapshot = false;
 
   constructor(
     private readonly takeChunkSeq: () => number,
@@ -40,6 +43,7 @@ export class ReplayBuffer {
       this.seal();
     }
     const json = JSON.stringify(event);
+    if (this.parts.length === 0) this.startsWithSnapshot = event.type === RRWEB_META;
     this.parts.push(json);
     this.bytes += json.length;
     this.sessionId = sessionId;
@@ -51,6 +55,7 @@ export class ReplayBuffer {
     const chunkSeq = this.takeChunkSeq();
     const body = `{"sessionId":${JSON.stringify(this.sessionId)},"chunkSeq":${chunkSeq},"events":[${this.parts.join(',')}]}`;
     const chunk: SealedChunk = { sessionId: this.sessionId, chunkSeq, body, bytes: body.length };
+    if (this.startsWithSnapshot) chunk.fullSnapshot = true;
     this.parts = [];
     this.bytes = 0;
     this.onSealed(chunk);

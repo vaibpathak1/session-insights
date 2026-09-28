@@ -7,7 +7,9 @@ import java.util.UUID;
 
 /**
  * Kafka value on {@code replay.chunks.v1}, one per chunk, key = {@code sessionId}.
- * Carries the client's {@code payload} or {@code events} unchanged.
+ * Carries the client's {@code events} unchanged. {@code payload} is legacy: the collector no
+ * longer accepts the base64 form and always writes null; the processor still dead-letters
+ * any such record left in Kafka ({@code unsupported_payload}).
  */
 public record ReplayEnvelope(
         int schemaVersion,

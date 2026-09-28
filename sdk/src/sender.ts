@@ -6,8 +6,9 @@ import { backoffMs, KEEPALIVE_MAX_BYTES, utf8Length, type Transport } from './tr
 /** Browsers cap in-flight beacon/keepalive bodies at ~64 KB per page; stay under it. */
 export const BEACON_BUDGET_BYTES = 60 * 1024;
 /**
- * In a browser a 401/403 without CORS headers looks like a network error, so repeated
- * failures before any success are treated like a refusal (bad key, origin or CSP).
+ * 401/403 are readable (ADR-0012) and stop the SDK at once. Repeated network errors before
+ * any success (collector down, CSP, ad blocker, or a collector older than ADR-0012) are
+ * treated like a refusal too.
  */
 export const MAX_FAILURES_BEFORE_FIRST_SUCCESS = 5;
 

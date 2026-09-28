@@ -4,9 +4,9 @@ import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.HttpHeaders;
 
 /**
- * CORS response headers, set by hand because allowed origins are per site and only known
- * after the key is resolved. The origin is echoed only once it matched; never {@code *},
- * never credentials.
+ * CORS response headers, set by hand (ADR-0012): preflights and 401/403 refusals echo any
+ * real request origin; everything else only once the origin matched the site's allow-list.
+ * Never {@code *}, never credentials.
  */
 final class CorsHeaders {
 
@@ -19,6 +19,11 @@ final class CorsHeaders {
     /** On every response: caches must key on the request origin. */
     static void vary(HttpServletResponse response) {
         response.setHeader(HttpHeaders.VARY, HttpHeaders.ORIGIN);
+    }
+
+    /** A real origin to echo: present and not the opaque {@code null} origin. */
+    static boolean echoable(String origin) {
+        return origin != null && !origin.isBlank() && !origin.equalsIgnoreCase("null");
     }
 
     static void allow(HttpServletResponse response, String origin) {

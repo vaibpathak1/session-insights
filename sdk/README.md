@@ -67,13 +67,17 @@ Masking happens in the browser, before anything is sent; the server redacts agai
 
 - **All inputs are masked** by default (`*` per character).
 - **Sensitive fields are never recorded**, whatever the configuration, and are never
-  unmasked even inside `data-si-unmask`: they are replaced by a same-size placeholder, with
-  no value and no input events. Sensitive means:
-  - `input[type=password]` and `autocomplete` containing `password`
-    (a field that was a password stays masked after a "show password" toggle)
-  - `autocomplete` containing `cc-` (card number, CVC, expiry, …) or `one-time-code`
-  - inputs, textareas and selects whose `name` or `id` contains `otp`, `cvv` or `cvc`
-    (case-insensitive)
+  unmasked even inside `data-si-unmask`:
+  - `input[type=password]`, `autocomplete` containing `password`, `cc-` (card number, CVC,
+    expiry, …) or `one-time-code`: replaced by a same-size placeholder, with no value and
+    no input events (a field that was a password stays masked after a "show password"
+    toggle).
+  - inputs, textareas and selects whose `name` or `id` has the **token** `otp`, `cvv`,
+    `cvc` or `cvn`. Names are split at non-alphanumerics, camelCase and letter/digit
+    boundaries, so `otpCode`, `card_cvv`, `user-otp`, `CVC2` match and `footprint` or
+    `hotpot` do not. These are recorded as fields, but their value is always the same
+    6-character mask, whatever its length, and never used for click labels. The SDK does
+    not write anything to your page to do this.
 - **`data-si-block`**: the element and everything inside it are never recorded.
 - **`data-si-unmask`**: inputs inside the element are recorded unmasked (except sensitive
   fields, see above).
@@ -106,12 +110,18 @@ Masking happens in the browser, before anything is sent; the server redacts agai
   survives the unload and is not sent again by the beacon.
 - Retries: network errors, `429` (honouring `Retry-After`) and `5xx`, with exponential
   backoff and full jitter (≤ 30 s). `400`, `413` and other `4xx` are dropped, not retried.
-- `401`/`403` (bad key or origin) stop the SDK for the page. In a browser the collector's
-  refusal carries no CORS headers, so it surfaces as a network error; the SDK therefore also
-  stops after 5 consecutive failures when nothing has ever been accepted on this page.
+- `401`/`403` (bad key or origin) stop the SDK for the page on the first refusal. The
+  collector makes them readable to browsers (ADR-0012), and with `debug: true` the console
+  says "invalid site key" or "origin not allowed for this site". As a fallback for network
+  errors (collector down, CSP, ad blockers), the SDK also stops after 5 consecutive failures
+  when nothing has ever been accepted on this page.
 - Everything waiting to be sent is held in memory, bounded at 2 MB; when full, the oldest
   replay data is dropped first (then the oldest events), and a new full snapshot is taken
   once the queue drains so replay can resume.
+- Large pages: the newest full snapshot is held outside that bound, up to 16 MB of JSON
+  (the collector's replay limit), and sent as one gzip-compressed `fetch` (never a beacon).
+  A snapshot over 16 MB is dropped and replay turns off for that page (events continue);
+  with `debug: true` the console says "full snapshot too large … replay off for this page".
 
 ## Content Security Policy
 

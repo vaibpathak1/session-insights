@@ -6,7 +6,10 @@ import io.sessioninsights.collector.ingest.Rejection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataAccessException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -14,7 +17,8 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 /**
  * Maps refusals to {@code {"error":"<code>"}}. No detail that would help probe keys or the
- * validator, and nothing from the request is logged.
+ * validator, and nothing from the request is logged. {@code 401}/{@code 403} echo the request
+ * origin so browser clients can read them and stop (ADR-0012).
  */
 @RestControllerAdvice
 public class IngestExceptionHandler {
@@ -30,7 +34,13 @@ public class IngestExceptionHandler {
     }
 
     @ExceptionHandler(IngestException.class)
-    public ResponseEntity<String> refused(IngestException e) {
+    public ResponseEntity<String> refused(IngestException e, HttpServletRequest request, HttpServletResponse response) {
+        CorsHeaders.vary(response);
+        HttpStatus status = e.rejection().status();
+        String origin = request.getHeader(HttpHeaders.ORIGIN);
+        if ((status == HttpStatus.UNAUTHORIZED || status == HttpStatus.FORBIDDEN) && CorsHeaders.echoable(origin)) {
+            CorsHeaders.allow(response, origin);
+        }
         return respond(e.rejection(), e.retryAfterSeconds());
     }
 

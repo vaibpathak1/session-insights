@@ -28,6 +28,15 @@ describe('ReplayBuffer', () => {
     );
   });
 
+  it('flags chunks that start with a full snapshot', () => {
+    buffer.add(S, { type: RRWEB_META, timestamp: 1 });
+    buffer.add(S, { type: RRWEB_FULL_SNAPSHOT, timestamp: 2 });
+    buffer.seal();
+    buffer.add(S, { type: 3, timestamp: 3 });
+    buffer.seal();
+    expect(chunks.map((c) => c.fullSnapshot === true)).toEqual([true, false]);
+  });
+
   it('seals a ReplayBatch with increasing chunkSeq', () => {
     buffer.add(S, { type: RRWEB_META, timestamp: 1 });
     buffer.add(S, { type: RRWEB_FULL_SNAPSHOT, timestamp: 2 });

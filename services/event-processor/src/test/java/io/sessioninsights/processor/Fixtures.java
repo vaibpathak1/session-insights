@@ -72,6 +72,21 @@ public final class Fixtures {
         return WireJson.mapper().readTree(json.append(']').toString());
     }
 
+    /** Meta + a FullSnapshot of about {@code bytes} bytes of repetitive DOM JSON (compressible, like real DOMs). */
+    public static JsonNode largeSnapshot(long firstTs, int bytes) {
+        StringBuilder json = new StringBuilder(bytes + 256)
+                .append("[{\"type\":4,\"timestamp\":").append(firstTs).append(",\"data\":{\"href\":\"http://localhost/\"}},")
+                .append("{\"type\":2,\"timestamp\":").append(firstTs + 1).append(",\"data\":{\"node\":{\"type\":0,\"childNodes\":[");
+        int id = 1;
+        while (json.length() < bytes - 200) {
+            json.append("{\"type\":2,\"tagName\":\"td\",\"attributes\":{\"class\":\"cell\"},\"childNodes\":[{\"type\":3,\"textContent\":\"row ")
+                    .append(id % 997).append("\",\"id\":").append(id + 1).append("}],\"id\":").append(id).append("},");
+            id += 2;
+        }
+        json.append("{\"type\":3,\"textContent\":\"end\",\"id\":0}]}}}]");
+        return WireJson.mapper().readTree(json.toString());
+    }
+
     public static ReplayEnvelope chunk(Session s, int chunkSeq, JsonNode events) {
         return new ReplayEnvelope(WireHeaders.CURRENT_SCHEMA_VERSION, s.tenantId(), s.siteId(), s.sessionId(),
                 chunkSeq, NOW, null, events);

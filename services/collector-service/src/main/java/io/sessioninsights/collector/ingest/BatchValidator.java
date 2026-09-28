@@ -17,7 +17,6 @@ import tools.jackson.databind.node.ObjectNode;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Base64;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -121,20 +120,9 @@ public class BatchValidator {
         if (batch == null || batch.sessionId() == null || batch.chunkSeq() == null || batch.chunkSeq() < 0) {
             throw new IngestException(Rejection.INVALID);
         }
-        boolean hasPayload = batch.payload() != null;
-        boolean hasEvents = batch.events() != null && !batch.events().isNull();
-        if (hasPayload == hasEvents) {
-            throw new IngestException(Rejection.INVALID);   // exactly one of the two
-        }
-        if (hasEvents && !batch.events().isArray()) {
+        // raw rrweb events only; a body in the removed base64 "payload" form has none
+        if (batch.events() == null || !batch.events().isArray()) {
             throw new IngestException(Rejection.INVALID);
-        }
-        if (hasPayload) {
-            try {
-                Base64.getDecoder().decode(batch.payload());
-            } catch (IllegalArgumentException notBase64) {
-                throw new IngestException(Rejection.INVALID);
-            }
         }
     }
 

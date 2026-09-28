@@ -1,22 +1,53 @@
 /**
  * Privacy rules (ADR-0006, FR-SDK-2). Sensitive fields are never recorded, whatever the
- * configuration: they are blocked (rrweb records a same-size placeholder, no value, no
- * events) and, as defence in depth, their values are masked even with `data-si-unmask`.
+ * configuration. Fields matched by CSS (password type, password / card / one-time-code
+ * autocomplete) are blocked: rrweb records a same-size placeholder, no value, no events.
+ * Fields matched by name/id tokens (otp, cvv, …) cannot be expressed in CSS, so they are
+ * handled in JavaScript only, with no writes to the host page: their values always record
+ * as a constant-length mask, so neither the value nor its length is recorded, and they are
+ * never read for click text. Either way, `data-si-unmask` never reveals them.
  */
 
-/** Substrings of a field's `name` or `id` that mark it sensitive (case-insensitive). */
-const SENSITIVE_NAME_TOKENS = ['otp', 'cvv', 'cvc'];
-const FIELD_TAGS = ['input', 'textarea', 'select'];
+/** Name/id tokens that mark a form field sensitive (compared case-insensitively). */
+const SENSITIVE_NAME_TOKENS = new Set(['otp', 'cvv', 'cvc', 'cvn']);
+const FIELD_TAGS = new Set(['INPUT', 'TEXTAREA', 'SELECT']);
 
+/** What any non-empty sensitive value records as: constant, so its length is not leaked. */
+export const SENSITIVE_MASK = '*'.repeat(6);
+
+/** Sensitive by CSS alone; also rrweb's block selector (see BLOCK_SELECTOR). */
 export const SENSITIVE_SELECTOR = [
   'input[type="password" i]',
   '[autocomplete*="password" i]', // current-password, new-password
   '[autocomplete*="cc-" i]', // cc-number, cc-csc, cc-exp, … (also "billing cc-number")
   '[autocomplete~="one-time-code" i]',
-  ...FIELD_TAGS.flatMap((tag) =>
-    ['name', 'id'].flatMap((attr) => SENSITIVE_NAME_TOKENS.map((t) => `${tag}[${attr}*="${t}" i]`)),
-  ),
 ].join(',');
+
+/**
+ * Splits a `name`/`id` into lower-case tokens at non-alphanumerics, camelCase and acronym
+ * boundaries, and between letters and digits: `otpCode` → otp code, `OTPCode` → otp code,
+ * `card_cvv` → card cvv, `CVC2` → cvc 2, `footprint` → footprint.
+ */
+export function nameTokens(value: string): string[] {
+  return value
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
+    .replace(/([a-zA-Z])([0-9])/g, '$1 $2')
+    .replace(/([0-9])([a-zA-Z])/g, '$1 $2')
+    .split(/[^a-zA-Z0-9]+/)
+    .filter((t) => t.length > 0)
+    .map((t) => t.toLowerCase());
+}
+
+/** A form field whose `name` or `id` has a sensitive token. */
+function hasSensitiveName(element: Element): boolean {
+  if (!FIELD_TAGS.has(element.tagName.toUpperCase())) return false;
+  for (const attr of ['name', 'id']) {
+    const value = element.getAttribute(attr);
+    if (value && nameTokens(value).some((t) => SENSITIVE_NAME_TOKENS.has(t))) return true;
+  }
+  return false;
+}
 
 /** Opt-out attribute for elements that must never be recorded. */
 export const BLOCK_ATTRIBUTE = 'data-si-block';
@@ -37,7 +68,10 @@ export function isSensitive(element: Element | null | undefined): boolean {
   if (onceSensitive.has(element)) return true;
   let sensitive: boolean;
   try {
-    sensitive = element.matches(SENSITIVE_SELECTOR) || element.hasAttribute('data-rr-is-password');
+    sensitive =
+      element.matches(SENSITIVE_SELECTOR) ||
+      element.hasAttribute('data-rr-is-password') ||
+      hasSensitiveName(element);
   } catch {
     sensitive = true; // if in doubt, treat as sensitive
   }
@@ -45,10 +79,14 @@ export function isSensitive(element: Element | null | undefined): boolean {
   return sensitive;
 }
 
-/** Remembers the sensitive fields currently in the document (called at record start). */
+/**
+ * Remembers the sensitive fields currently in the document (called at record start), so a
+ * later rename or type change cannot make them recordable. In memory only: nothing is
+ * written to the page.
+ */
 export function rememberSensitiveFields(root: ParentNode): void {
   try {
-    root.querySelectorAll(SENSITIVE_SELECTOR).forEach((el) => onceSensitive.add(el));
+    root.querySelectorAll('input,textarea,select').forEach((el) => isSensitive(el));
   } catch {
     // ignore
   }
@@ -61,10 +99,11 @@ export function mask(text: string): string {
 /**
  * rrweb `maskInputFn`: called for every input value rrweb records (all inputs are masked
  * by default). Returns the value unmasked only inside `[data-si-unmask]`, never for a
- * sensitive field.
+ * sensitive field; a sensitive field's value is always {@link SENSITIVE_MASK}, whatever its
+ * length (an empty value stays empty). An unknown element counts as sensitive.
  */
 export function maskInput(text: string, element: HTMLElement | null | undefined): string {
-  if (!element || isSensitive(element)) return mask(text);
+  if (!element || isSensitive(element)) return text.length === 0 ? '' : SENSITIVE_MASK;
   try {
     if (element.closest(`[${UNMASK_ATTRIBUTE}]`)) return text;
   } catch {

@@ -2,6 +2,7 @@ package io.sessioninsights.collector.ingest;
 
 import io.sessioninsights.collector.config.CollectorProperties;
 import io.sessioninsights.common.wire.ReplayBatch;
+import io.sessioninsights.common.wire.WireJson;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.context.properties.bind.Binder;
 import org.springframework.boot.context.properties.source.MapConfigurationPropertySource;
@@ -136,18 +137,24 @@ class BatchValidatorTest {
     }
 
     @Test
-    void replayNeedsExactlyOneOfPayloadOrEvents() {
+    void replayNeedsARawEventArray() {
         UUID sid = UUID.randomUUID();
-        validator.validate(new ReplayBatch(null, sid, 0, "aGVsbG8=", null));
         validator.validate(validator.parseReplay(bytes("{\"sessionId\":\"" + sid + "\",\"chunkSeq\":1,\"events\":[{\"type\":2}]}")));
+        // a stray legacy "payload" next to valid events is ignored like any unknown field
+        ReplayBatch withStray = validator.parseReplay(bytes("{\"sessionId\":\"" + sid
+                + "\",\"chunkSeq\":1,\"payload\":\"aGVsbG8=\",\"events\":[{\"type\":2}]}"));
+        validator.validate(withStray);
 
-        assertRejected(() -> validator.validate(new ReplayBatch(null, sid, 0, null, null)), Rejection.INVALID);
+        // the removed base64 form (payload only) is refused
         assertRejected(() -> validator.validate(validator.parseReplay(bytes("{\"sessionId\":\"" + sid
-                + "\",\"chunkSeq\":1,\"payload\":\"aGVsbG8=\",\"events\":[]}"))), Rejection.INVALID);
-        assertRejected(() -> validator.validate(new ReplayBatch(null, sid, 0, "not base64!", null)), Rejection.INVALID);
-        assertRejected(() -> validator.validate(new ReplayBatch(null, sid, -1, "aGVsbG8=", null)), Rejection.INVALID);
+                + "\",\"chunkSeq\":0,\"payload\":\"aGVsbG8=\"}"))), Rejection.INVALID);
+        assertRejected(() -> validator.validate(new ReplayBatch(null, sid, 0, null)), Rejection.INVALID);
+        assertRejected(() -> validator.validate(new ReplayBatch(null, sid, -1, WireJson.mapper().readTree("[]"))),
+                Rejection.INVALID);
         assertRejected(() -> validator.validate(validator.parseReplay(bytes("{\"sessionId\":\"" + sid
                 + "\",\"chunkSeq\":1,\"events\":{\"type\":2}}"))), Rejection.INVALID);
+        assertRejected(() -> validator.validate(validator.parseReplay(bytes("{\"sessionId\":\"" + sid
+                + "\",\"chunkSeq\":1,\"events\":null}"))), Rejection.INVALID);
     }
 
     static CollectorProperties defaults() {

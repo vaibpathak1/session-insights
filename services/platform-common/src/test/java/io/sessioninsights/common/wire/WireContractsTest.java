@@ -83,7 +83,7 @@ class WireContractsTest {
 
         assertThat(batch.toString()).doesNotContain("sk_dev_secret");
         assertThat(batch.events().getFirst().toString()).doesNotContain("private text");
-        assertThat(new ReplayBatch("sk_dev_secret", SESSION, 0, "cGF5bG9hZA==", null).toString())
+        assertThat(new ReplayBatch("sk_dev_secret", SESSION, 0, null).toString())
                 .doesNotContain("sk_dev_secret").doesNotContain("cGF5bG9hZA==");
     }
 

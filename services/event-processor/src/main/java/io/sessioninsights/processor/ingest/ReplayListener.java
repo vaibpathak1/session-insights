@@ -53,7 +53,9 @@ public class ReplayListener {
             concurrency = "${processor.kafka.concurrency}", batch = "true",
             properties = {
                     "max.poll.records=${processor.kafka.replay.max-poll-records}",
-                    "fetch.max.wait.ms=${processor.kafka.replay.fetch-max-wait-ms}"})
+                    "fetch.max.wait.ms=${processor.kafka.replay.fetch-max-wait-ms}",
+                    "fetch.max.bytes=${processor.kafka.replay.fetch-max-bytes}",
+                    "max.partition.fetch.bytes=${processor.kafka.replay.max-partition-fetch-bytes}"})
     public void onBatch(List<ConsumerRecord<String, byte[]>> records) {
         metrics.batch(Topics.REPLAY_CHUNKS, records.size());
         List<BisectingWriter.Item<ReplayChunk>> chunks = new ArrayList<>(records.size());

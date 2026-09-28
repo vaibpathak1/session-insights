@@ -107,58 +107,77 @@ class EventsEndpointTest extends CollectorIntegrationTest {
     }
 
     @Test
-    void unknownOrMissingKeyIs401WithoutCorsHeaders() {
+    void unknownOrMissingKeyIs401ReadableByBrowsers() {
         String body = batchJson(UUID.randomUUID(), eventJson(UUID.randomUUID(), now()));
 
-        HttpResponse<String> unknown = post("/v1/events").header("X-SI-Key", "sk_test_nope").body(body).send();
+        HttpResponse<String> unknown = post("/v1/events?k=sk_test_nope").body(body).send();
         HttpResponse<String> missing = post("/v1/events").body(body).send();
 
+        // ADR-0012: the browser can read the refusal, so the SDK stops on the first one
         for (HttpResponse<String> response : List.of(unknown, missing)) {
             assertThat(response.statusCode()).isEqualTo(401);
             assertThat(response.body()).isEqualTo("{\"error\":\"unauthorized\"}");
-            assertThat(response.headers().firstValue("Access-Control-Allow-Origin")).isEmpty();
+            assertThat(response.headers().firstValue("Access-Control-Allow-Origin")).hasValue(ORIGIN);
+            assertThat(response.headers().firstValue("Vary")).hasValue("Origin");
+            assertThat(response.headers().firstValue("Access-Control-Allow-Credentials")).isEmpty();
         }
+        // a non-browser client sends no Origin: nothing to echo
+        HttpResponse<String> server = post("/v1/events").header("Origin", null).header("X-SI-Key", "sk_test_nope")
+                .body(body).send();
+        assertThat(server.statusCode()).isEqualTo(401);
+        assertThat(server.headers().firstValue("Access-Control-Allow-Origin")).isEmpty();
     }
 
     @Test
-    void originNotAllowedOrMissingIs403() {
+    void originNotAllowedOrMissingIs403ReadableByTheRequestingOrigin() {
         SiteFixture site = newSite();
-        String body = batchJson(UUID.randomUUID(), eventJson(UUID.randomUUID(), now()));
+        UUID session = UUID.randomUUID();
+        String body = batchJson(session, eventJson(UUID.randomUUID(), now()));
 
         HttpResponse<String> evil = post("/v1/events").key(site).header("Origin", "https://evil.example").body(body).send();
-        HttpResponse<String> noOrigin = post("/v1/events").key(site).header("Origin", null).body(body).send();
         HttpResponse<String> lookalike = post("/v1/events").key(site).header("Origin", "http://localhost.evil.example:3000").body(body).send();
+        HttpResponse<String> noOrigin = post("/v1/events").key(site).header("Origin", null).body(body).send();
+        HttpResponse<String> nullOrigin = post("/v1/events").key(site).header("Origin", "null").body(body).send();
 
-        for (HttpResponse<String> response : List.of(evil, noOrigin, lookalike)) {
+        for (HttpResponse<String> response : List.of(evil, lookalike, noOrigin, nullOrigin)) {
             assertThat(response.statusCode()).isEqualTo(403);
             assertThat(response.body()).isEqualTo("{\"error\":\"forbidden\"}");
-            assertThat(response.headers().firstValue("Access-Control-Allow-Origin")).isEmpty();
+            assertThat(response.headers().firstValue("Vary")).hasValue("Origin");
         }
+        assertThat(evil.headers().firstValue("Access-Control-Allow-Origin")).hasValue("https://evil.example");
+        assertThat(lookalike.headers().firstValue("Access-Control-Allow-Origin")).hasValue("http://localhost.evil.example:3000");
+        assertThat(noOrigin.headers().firstValue("Access-Control-Allow-Origin")).isEmpty();
+        assertThat(nullOrigin.headers().firstValue("Access-Control-Allow-Origin")).isEmpty();
+        // the allow-list is still enforced on the POST: nothing was produced
+        assertThat(CollectorTestInfra.records(Topics.TELEMETRY_EVENTS, session.toString(), 0)).isEmpty();
     }
 
     @Test
-    void preflightEchoesAllowedWildcardPortOriginOnly() {
+    void preflightAlwaysSucceedsAndEchoesTheOrigin() {
         SiteFixture site = newSite();
 
-        HttpResponse<String> allowed = options("/v1/events?k=" + site.key())
-                .header("Origin", "http://localhost:5173")
-                .header("Access-Control-Request-Method", "POST")
-                .header("Access-Control-Request-Headers", "content-type,x-si-key")
-                .send();
-        assertThat(allowed.statusCode()).isEqualTo(204);
-        assertThat(allowed.headers().firstValue("Access-Control-Allow-Origin")).hasValue("http://localhost:5173");
-        assertThat(allowed.headers().firstValue("Access-Control-Allow-Methods")).hasValue("POST");
-        assertThat(allowed.headers().firstValue("Access-Control-Allow-Headers")).hasValue("Content-Type, Content-Encoding, X-SI-Key");
-        assertThat(allowed.headers().firstValue("Access-Control-Max-Age")).hasValue("600");
-        assertThat(allowed.headers().firstValue("Access-Control-Allow-Credentials")).isEmpty();
-        assertThat(allowed.headers().firstValue("Vary")).hasValue("Origin");
-
-        for (var denied : List.of(
-                options("/v1/events?k=" + site.key()).header("Origin", "https://evil.example"),
-                options("/v1/events?k=sk_test_unknown").header("Origin", "http://localhost:5173"),
-                options("/v1/events").header("Origin", "http://localhost:5173"))) {
-            HttpResponse<String> response = denied.header("Access-Control-Request-Method", "POST").send();
-            assertThat(response.statusCode()).isEqualTo(403);
+        for (var preflight : List.of(
+                options("/v1/events?k=" + site.key()).header("Origin", "http://localhost:5173"),   // allowed
+                options("/v1/events?k=" + site.key()).header("Origin", "https://evil.example"),     // not allowed
+                options("/v1/replay?k=sk_test_unknown").header("Origin", "https://evil.example"),   // unknown key
+                options("/v1/events").header("Origin", "https://evil.example"))) {                  // no key
+            HttpResponse<String> response = preflight
+                    .header("Access-Control-Request-Method", "POST")
+                    .header("Access-Control-Request-Headers", "content-type,content-encoding")
+                    .send();
+            String origin = response.request().headers().firstValue("Origin").orElseThrow();
+            assertThat(response.statusCode()).isEqualTo(204);
+            assertThat(response.headers().firstValue("Access-Control-Allow-Origin")).hasValue(origin);
+            assertThat(response.headers().firstValue("Access-Control-Allow-Methods")).hasValue("POST");
+            assertThat(response.headers().firstValue("Access-Control-Allow-Headers")).hasValue("Content-Type, Content-Encoding, X-SI-Key");
+            assertThat(response.headers().firstValue("Access-Control-Max-Age")).hasValue("600");
+            assertThat(response.headers().firstValue("Access-Control-Allow-Credentials")).isEmpty();
+            assertThat(response.headers().firstValue("Vary")).hasValue("Origin");
+        }
+        for (String origin : new String[] {null, "null"}) {
+            HttpResponse<String> response = options("/v1/events").header("Origin", origin)
+                    .header("Access-Control-Request-Method", "POST").send();
+            assertThat(response.statusCode()).isEqualTo(204);
             assertThat(response.headers().firstValue("Access-Control-Allow-Origin")).isEmpty();
         }
     }

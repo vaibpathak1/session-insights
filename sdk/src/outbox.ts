@@ -1,8 +1,14 @@
 import type { SealedChunk } from './replay';
+import { utf8Length } from './transport';
 import { MAX_EVENTS_PER_BATCH, type EventBatch, type TelemetryEvent } from './wire';
 
-/** In-memory bound for everything waiting to be sent. */
+/** In-memory bound for everything waiting to be sent (except one large full snapshot). */
 export const MAX_QUEUE_BYTES = 2 * 1024 * 1024;
+/**
+ * Largest full-snapshot chunk the SDK sends (UTF-8 bytes, before gzip), equal to the
+ * collector's `collector.limits.max-replay-body`. It goes over normal `fetch`, never a beacon.
+ */
+export const MAX_SNAPSHOT_CHUNK_BYTES = 16 * 1024 * 1024;
 /** Upper bound for one events request (collector accepts 1 MB decompressed). */
 const MAX_EVENT_BATCH_BYTES = 512 * 1024;
 
@@ -29,21 +35,32 @@ export interface DropCounts {
  * resend the same items. When the bound is exceeded the oldest replay chunks are dropped
  * first, then the oldest events; `onReplayDropped` lets the client take a new full snapshot
  * so replay can recover.
+ *
+ * The newest full-snapshot chunk is held outside the bound (Phase 4b): a large DOM makes a
+ * snapshot of several MB, which would otherwise evict itself and, via `onReplayDropped`,
+ * trigger another snapshot forever. It is never evicted by the bound, up to
+ * {@link MAX_SNAPSHOT_CHUNK_BYTES}; a larger one is dropped and `onSnapshotTooLarge` is
+ * called instead of taking another snapshot.
  */
 export class Outbox {
   private events: QueuedEvent[] = [];
   private chunks: SealedChunk[] = [];
   private bytes = 0;
+  /** The newest full-snapshot chunk, queued but counted outside the bound. */
+  private snapshot: SealedChunk | null = null;
   readonly dropped: DropCounts = { events: 0, replayChunks: 0 };
 
   constructor(
     private readonly sdkVersion: string,
     private readonly onReplayDropped: () => void = () => {},
     private readonly maxBytes = MAX_QUEUE_BYTES,
+    private readonly onSnapshotTooLarge: (utf8Bytes: number) => void = () => {},
+    private readonly maxSnapshotBytes = MAX_SNAPSHOT_CHUNK_BYTES,
   ) {}
 
   get size(): { events: number; chunks: number; bytes: number } {
-    return { events: this.events.length, chunks: this.chunks.length, bytes: this.bytes };
+    const bytes = this.bytes + (this.snapshot ? this.snapshot.bytes : 0);
+    return { events: this.events.length, chunks: this.chunks.length, bytes };
   }
 
   get isEmpty(): boolean {
@@ -68,6 +85,20 @@ export class Outbox {
   }
 
   addChunk(chunk: SealedChunk): void {
+    if (chunk.fullSnapshot) {
+      // UTF-16 length ≤ UTF-8 length ≤ 3 × UTF-16 length: measure only when it can matter
+      const utf8 = chunk.bytes * 3 <= this.maxSnapshotBytes ? chunk.bytes : utf8Length(chunk.body);
+      if (utf8 > this.maxSnapshotBytes) {
+        this.dropped.replayChunks++;
+        this.onSnapshotTooLarge(utf8);
+        return;
+      }
+      if (this.snapshot) this.bytes += this.snapshot.bytes; // the previous one counts normally now
+      this.snapshot = chunk;
+      this.chunks.push(chunk);
+      this.enforceBound();
+      return;
+    }
     this.chunks.push(chunk);
     this.bytes += chunk.bytes;
     this.enforceBound();
@@ -106,7 +137,8 @@ export class Outbox {
       });
     } else if (this.chunks.includes(sent.chunk)) {
       this.chunks = this.chunks.filter((c) => c !== sent.chunk);
-      this.bytes -= sent.chunk.bytes;
+      if (sent.chunk === this.snapshot) this.snapshot = null;
+      else this.bytes -= sent.chunk.bytes;
     }
   }
 
@@ -170,6 +202,7 @@ export class Outbox {
     this.events = [];
     this.chunks = [];
     this.bytes = 0;
+    this.snapshot = null;
   }
 
   private eventBody(batch: QueuedEvent[], head: QueuedEvent | undefined = batch[0]): string {
@@ -185,9 +218,10 @@ export class Outbox {
   private enforceBound(): void {
     let droppedReplay = false;
     while (this.bytes > this.maxBytes) {
-      const chunk = this.chunks.shift();
-      if (chunk) {
-        this.bytes -= chunk.bytes;
+      const index = this.chunks.findIndex((c) => c !== this.snapshot);
+      if (index >= 0) {
+        const [chunk] = this.chunks.splice(index, 1);
+        this.bytes -= chunk!.bytes;
         this.dropped.replayChunks++;
         droppedReplay = true;
         continue;

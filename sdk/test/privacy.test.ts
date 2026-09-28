@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { isSensitive, maskInput, SENSITIVE_SELECTOR } from '../src/privacy';
+import {
+  isSensitive,
+  maskInput,
+  nameTokens,
+  SENSITIVE_MASK,
+  SENSITIVE_SELECTOR,
+} from '../src/privacy';
 import { startRecorder, type Recorder, type RrwebEvent } from '../src/recorder';
 
 const SECRETS = {
@@ -68,17 +74,38 @@ describe('sensitive field detection', () => {
     ['<input autocomplete="shipping cc-csc">', true],
     ['<input autocomplete="one-time-code">', true],
     ['<input name="otp">', true],
+    ['<input name="otpCode">', true],
+    ['<input name="card_cvv">', true],
+    ['<input id="user-otp">', true],
+    ['<input name="CVC">', true],
+    ['<input id="OTPCode">', true],
+    ['<input name="cvn">', true],
     ['<input id="SmsOtpInput">', true],
     ['<input name="cardCvv">', true],
     ['<input id="CVC2">', true],
     ['<textarea name="otp_backup"></textarea>', true],
     ['<select id="cvv-type"></select>', true],
+    ['<input name="footprint">', false], // token match, not substring (Phase 4b)
+    ['<input id="hotpot">', false],
+    ['<input name="cvvault">', false],
     ['<input name="email">', false],
     ['<input autocomplete="email">', false],
     ['<div id="otp-help"></div>', false], // not a field
   ])('%s → %s', (html, expected) => {
     document.body.innerHTML = html;
     expect(isSensitive(document.body.firstElementChild)).toBe(expected);
+  });
+
+  it.each([
+    ['otpCode', ['otp', 'code']],
+    ['OTPCode', ['otp', 'code']],
+    ['card_cvv', ['card', 'cvv']],
+    ['user-otp', ['user', 'otp']],
+    ['CVC2', ['cvc', '2']],
+    ['Login_OTP_code', ['login', 'otp', 'code']],
+    ['footprint', ['footprint']],
+  ])('tokenises %s', (value, tokens) => {
+    expect(nameTokens(value)).toEqual(tokens);
   });
 
   it('builds a valid selector', () => {
@@ -93,8 +120,26 @@ describe('maskInput', () => {
     expect(maskInput('abc', el('user'))).toBe('***');
     expect(maskInput('abc', el('nick'))).toBe('abc');
     for (const id of ['pw', 'card', 'exp', 'code', 'x1', 'CardCVV', 'z9']) {
-      expect(maskInput('1234', el(id))).toBe('****');
+      expect(maskInput('1234', el(id))).toBe(SENSITIVE_MASK);
     }
+  });
+
+  it('sensitive values record as a constant-length mask, whatever their length', () => {
+    document.body.innerHTML = `
+      <div data-si-unmask>
+        <input id="a" name="otpCode"><input id="b" name="card_cvv"><input id="p" type="password">
+        <input id="f" name="footprint"><input id="h" name="hotpot">
+      </div>`;
+    const el = (id: string) => document.getElementById(id);
+    for (const id of ['a', 'b', 'p']) {
+      const outputs = ['1', '1234', '12345678', 'x'.repeat(40)].map((v) => maskInput(v, el(id)));
+      expect(new Set(outputs)).toEqual(new Set([SENSITIVE_MASK])); // data-si-unmask ignored
+    }
+    expect(SENSITIVE_MASK).toBe('******');
+    expect(maskInput('', el('a'))).toBe('');
+    // not sensitive: data-si-unmask works as usual
+    expect(maskInput('size 42', el('f'))).toBe('size 42');
+    expect(maskInput('recipe', el('h'))).toBe('recipe');
   });
 
   it('keeps a password masked after a show-password toggle', () => {
@@ -137,6 +182,47 @@ describe('recording (rrweb in jsdom)', () => {
     expect(json).toContain('*'.repeat(SECRETS.plain.length)); // plain input: masked, not dropped
     expect(json).toContain('visible-nickname'); // explicit opt-in
     expect(json).toContain('Visible page copy'); // text is not masked by default
+  });
+
+  it('token-matched fields: constant mask on record, never unmasked, no writes to the page', () => {
+    document.body.innerHTML = `
+      <div data-si-unmask>
+        <input id="otp1" name="otpCode"><input id="cvv1" name="card_cvv">
+        <input id="fp" name="footprint">
+      </div>`;
+    const before = document.body.innerHTML;
+    const events = record();
+    type('otp1', '1234');
+    type('cvv1', '12345678');
+    type('fp', 'size-42-shoe');
+    // inserted after recording started
+    const late = document.createElement('input');
+    late.id = 'late';
+    late.name = 'user-otp';
+    document.querySelector('[data-si-unmask]')!.appendChild(late);
+    type('late', '99');
+    // renamed from a harmless name to a sensitive one after recording started
+    const renamed = document.getElementById('fp') as HTMLInputElement;
+    renamed.name = 'smsOtp';
+    type('fp', '424242');
+
+    const inputs = events
+      .filter((e) => e.type === 3)
+      .map((e) => (e as unknown as { data: { source: number; text?: string } }).data)
+      .filter((d) => d.source === 5 && d.text !== undefined)
+      .map((d) => d.text);
+    const json = JSON.stringify(events);
+    for (const secret of ['1234', '12345678', '99', '424242']) {
+      expect(json).not.toContain(`"${secret}"`);
+    }
+    expect(inputs).toContain('size-42-shoe'); // footprint: an ordinary unmasked field
+    expect(inputs.filter((t) => t === SENSITIVE_MASK)).toHaveLength(4);
+    // values of different lengths are indistinguishable
+    expect(inputs.filter((t) => t !== 'size-42-shoe')).toEqual(Array(4).fill(SENSITIVE_MASK));
+    // the SDK wrote nothing to the host page (option A's marker attribute was rejected)
+    document.getElementById('late')!.remove();
+    renamed.name = 'footprint';
+    expect(document.body.innerHTML).toBe(before);
   });
 
   it('maskAllText masks all text nodes', () => {
