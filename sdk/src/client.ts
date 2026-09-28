@@ -137,12 +137,7 @@ export class Client {
     this.stop();
     this.replay.clear();
     this.outbox.clear();
-    this.log.once(
-      'halted',
-      'status' in reason
-        ? `collector refused this site key or origin (${reason.status}); stopped for this page`
-        : 'collector unreachable or refused (in browsers CORS hides 401/403); stopped for this page',
-    );
+    this.log.once('halted', `${haltMessage(reason)}; stopped for this page`);
   }
 
   private stop(): void {
@@ -238,4 +233,16 @@ export class Client {
       this.recorder.takeFullSnapshot(); // replay can resume after dropped chunks
     }
   }
+}
+
+/**
+ * Debug message for a halt. The collector makes 401/403 readable to browsers (ADR-0012),
+ * so a bad key or origin is named on the first request; "unreachable" means five network
+ * errors before any success (collector down, blocked by CSP or an ad blocker).
+ */
+export function haltMessage(reason: FatalReason): string {
+  if (!('status' in reason)) return 'collector unreachable (network errors before any success)';
+  if (reason.status === 401) return 'invalid site key (401)';
+  if (reason.status === 403) return 'origin not allowed for this site (403)';
+  return `collector refused this page (${reason.status})`;
 }

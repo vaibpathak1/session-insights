@@ -521,6 +521,26 @@ describe('client end to end (jsdom, stubbed network)', () => {
     expect(calls).toHaveLength(1);
   });
 
+  it.each([
+    [401, 'invalid site key'],
+    [403, 'origin not allowed for this site'],
+  ])(
+    'a readable %s stops after one request and says why in debug mode',
+    async (status, message) => {
+      responses = [status];
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const sdk = await loadSdk();
+      sdk.init({ ...OPTIONS, collectorUrl: `https://${host}`, debug: true });
+      await vi.waitFor(() => expect(sdk.getSessionId()).toBeNull());
+      await new Promise((r) => setTimeout(r, 100)); // no retry was scheduled: nothing more is sent
+      expect(calls).toHaveLength(1);
+      const logged = warn.mock.calls.map((args) => args.join(' '));
+      expect(logged.filter((line) => line.includes(message))).toHaveLength(1);
+      expect(logged.some((line) => line.includes('unreachable'))).toBe(false);
+      warn.mockRestore();
+    },
+  );
+
   it('takes a new full snapshot once the queue drains after dropping replay data', async () => {
     responses = [202];
     const c = start(1);

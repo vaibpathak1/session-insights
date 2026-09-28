@@ -106,9 +106,11 @@ Masking happens in the browser, before anything is sent; the server redacts agai
   survives the unload and is not sent again by the beacon.
 - Retries: network errors, `429` (honouring `Retry-After`) and `5xx`, with exponential
   backoff and full jitter (≤ 30 s). `400`, `413` and other `4xx` are dropped, not retried.
-- `401`/`403` (bad key or origin) stop the SDK for the page. In a browser the collector's
-  refusal carries no CORS headers, so it surfaces as a network error; the SDK therefore also
-  stops after 5 consecutive failures when nothing has ever been accepted on this page.
+- `401`/`403` (bad key or origin) stop the SDK for the page on the first refusal. The
+  collector makes them readable to browsers (ADR-0012), and with `debug: true` the console
+  says "invalid site key" or "origin not allowed for this site". As a fallback for network
+  errors (collector down, CSP, ad blockers), the SDK also stops after 5 consecutive failures
+  when nothing has ever been accepted on this page.
 - Everything waiting to be sent is held in memory, bounded at 2 MB; when full, the oldest
   replay data is dropped first (then the oldest events), and a new full snapshot is taken
   once the queue drains so replay can resume.
