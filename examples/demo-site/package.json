@@ -1,0 +1,20 @@
+{
+  "name": "session-insights-demo-site",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Local demo page for the Session Insights browser SDK (Phase 3). Not published.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@session-insights/sdk": "file:../../sdk"
+  },
+  "devDependencies": {
+    "typescript": "6.0.3",
+    "vite": "8.3.1"
+  }
+}

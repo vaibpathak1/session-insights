@@ -41,6 +41,7 @@ Source of truth, in order:
 - Build only what the current phase lists. v2 features (F9–F15) get schema room, not code,
   until their phase.
 - Records for DTOs and events; constructor injection; no field injection; no Lombok.
+- Never modify a Flyway/ClickHouse migration after it is merged to `main`; add a new version instead.
 
 ## Commands
 ```bash
@@ -64,6 +65,7 @@ docker compose down -v            # full reset
    - Never push secrets; `.env` is git-ignored — check `git status` before every commit.
 1. **Plan first.** For any phase or multi-file change, present a plan (files to create/
    change, tests to add) and wait for approval before writing code.
+   Never start implementing a phase until the plan is explicitly approved by the maintainer.
 2. **One task at a time.** Finish a task, run its tests, then commit with a message like
    `phase-1(task-1.3): add session_insight table with HNSW index`.
 3. **Tests are part of the task.** Integration tests use Testcontainers with the same

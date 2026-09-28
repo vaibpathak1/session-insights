@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Session Insights demo</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <header>
+      <strong>Session Insights demo shop</strong>
+      <nav>
+        <a href="/" data-route>Home</a>
+        <a href="/login" data-route>Login</a>
+        <a href="/checkout" data-route>Checkout</a>
+        <a href="#faq">FAQ (hash)</a>
+      </nav>
+      <p class="status">
+        Session <code id="session-id">not started</code> · <span id="sdk-status"></span>
+      </p>
+    </header>
+
+    <main>
+      <section data-page="/">
+        <h1>Welcome</h1>
+        <label>Search <input id="search" name="search" placeholder="Try typing here" /></label>
+        <div data-si-unmask>
+          <label>Nickname (unmasked) <input id="nickname" name="nickname" /></label>
+        </div>
+        <div id="account-panel" data-si-block>
+          Blocked panel: account balance 9,999.00, never recorded.
+        </div>
+        <p>
+          <button id="throw-error">Throw an error</button>
+          <button id="console-error">console.error</button>
+          <button id="reject-promise">Unhandled rejection</button>
+        </p>
+        <h2 id="faq">FAQ</h2>
+        <p>Hash navigation lands here.</p>
+      </section>
+
+      <section data-page="/login" hidden>
+        <h1>Login</h1>
+        <form id="login-form" data-si-unmask>
+          <label>Email <input id="email" name="email" autocomplete="email" /></label>
+          <label>
+            Password <input id="password" name="password" type="password" autocomplete="current-password" />
+          </label>
+          <button type="button" id="toggle-password">Show password</button>
+          <button type="submit">Sign in</button>
+        </form>
+      </section>
+
+      <section data-page="/checkout" hidden>
+        <h1>Checkout</h1>
+        <form id="checkout-form">
+          <label>Name on card <input id="card-name" name="cc-name" autocomplete="cc-name" /></label>
+          <label>Card number <input id="card-number" name="cardnumber" autocomplete="cc-number" inputmode="numeric" /></label>
+          <label>CVC <input id="card-cvc" name="cvc" autocomplete="cc-csc" /></label>
+          <label>SMS code <input id="otp" name="otp" autocomplete="one-time-code" /></label>
+          <button type="submit">Pay</button>
+        </form>
+      </section>
+    </main>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

@@ -1,0 +1,55 @@
+{
+  "name": "@session-insights/sdk",
+  "version": "0.1.0",
+  "description": "Session Insights browser SDK: privacy-first session recording (rrweb) and structured events.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "module": "./dist/session-insights.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/session-insights.js"
+    }
+  },
+  "unpkg": "./dist/session-insights.iife.js",
+  "jsdelivr": "./dist/session-insights.iife.js",
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "vite build --mode esm && vite build --mode iife && tsc -p tsconfig.build.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "tsc --noEmit && eslint . && prettier --check .",
+    "format": "prettier --write .",
+    "size": "size-limit",
+    "e2e": "playwright test"
+  },
+  "size-limit": [
+    {
+      "name": "IIFE bundle (script tag, everything on the page)",
+      "path": "dist/session-insights.iife.js",
+      "limit": "60 kB",
+      "gzip": true
+    }
+  ],
+  "dependencies": {
+    "@rrweb/record": "2.1.6"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@playwright/test": "1.63.0",
+    "@size-limit/file": "14.1.0",
+    "@types/node": "24.19.0",
+    "eslint": "10.11.0",
+    "jsdom": "30.1.1",
+    "prettier": "3.9.9",
+    "size-limit": "14.1.0",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.70.1",
+    "vite": "8.3.1",
+    "vitest": "5.0.2"
+  }
+}

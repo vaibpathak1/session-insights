@@ -8,6 +8,7 @@ on:
 jobs:
   compose-config:
     runs-on: ubuntu-latest
+    timeout-minutes: 30   # a hung step must not hold CI for hours
     steps:
       - uses: actions/checkout@v4
       - name: Validate docker compose file
@@ -15,6 +16,7 @@ jobs:
 
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -24,3 +26,29 @@ jobs:
           cache: maven
       - name: Build and test
         run: mvn -B verify
+
+  sdk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: sdk
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: sdk/.nvmrc
+          cache: npm
+          cache-dependency-path: sdk/package-lock.json
+      - name: Install
+        run: npm ci
+      - name: Lint (tsc, ESLint, Prettier)
+        run: npm run lint
+      - name: Unit tests
+        run: npm test
+      - name: Build
+        run: npm run build
+      - name: Size check (60 kB gzip budget)
+        run: npm run size
+      # Playwright e2e needs the full stack (compose + collector); it runs locally:
+      # ./scripts/e2e-sdk.sh
