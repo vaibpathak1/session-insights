@@ -17,15 +17,18 @@ public final class TestContainers {
     public static final String APP_PASSWORD = "insights_app_test_pw";
     public static final String COLLECTOR_USER = "insights_collector";
     public static final String COLLECTOR_PASSWORD = "insights_collector_test_pw";
+    public static final String PROCESSOR_USER = "insights_processor";
+    public static final String PROCESSOR_PASSWORD = "insights_processor_test_pw";
     public static final int CLICKHOUSE_HTTP_PORT = 8123;
 
     private TestContainers() {
     }
 
-    /** Flyway placeholders for the PostgreSQL migrations (roles created by V3 and V4). */
+    /** Flyway placeholders for the PostgreSQL migrations (roles created by V3, V4 and V5). */
     public static Map<String, String> flywayPlaceholders() {
         return Map.of("appUser", APP_USER, "appPassword", APP_PASSWORD,
-                "collectorUser", COLLECTOR_USER, "collectorPassword", COLLECTOR_PASSWORD);
+                "collectorUser", COLLECTOR_USER, "collectorPassword", COLLECTOR_PASSWORD,
+                "processorUser", PROCESSOR_USER, "processorPassword", PROCESSOR_PASSWORD);
     }
 
     public static PostgreSQLContainer postgres() {

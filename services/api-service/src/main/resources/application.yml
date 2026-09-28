@@ -20,6 +20,8 @@ spring:
       appPassword: ${POSTGRES_APP_PASSWORD:insights_app_dev_pw}
       collectorUser: ${POSTGRES_COLLECTOR_USER:insights_collector}
       collectorPassword: ${POSTGRES_COLLECTOR_PASSWORD:insights_collector_dev_pw}
+      processorUser: ${POSTGRES_PROCESSOR_USER:insights_processor}
+      processorPassword: ${POSTGRES_PROCESSOR_PASSWORD:insights_processor_dev_pw}
   jpa:
     open-in-view: false
     hibernate:
