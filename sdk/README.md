@@ -67,13 +67,17 @@ Masking happens in the browser, before anything is sent; the server redacts agai
 
 - **All inputs are masked** by default (`*` per character).
 - **Sensitive fields are never recorded**, whatever the configuration, and are never
-  unmasked even inside `data-si-unmask`: they are replaced by a same-size placeholder, with
-  no value and no input events. Sensitive means:
-  - `input[type=password]` and `autocomplete` containing `password`
-    (a field that was a password stays masked after a "show password" toggle)
-  - `autocomplete` containing `cc-` (card number, CVC, expiry, …) or `one-time-code`
-  - inputs, textareas and selects whose `name` or `id` contains `otp`, `cvv` or `cvc`
-    (case-insensitive)
+  unmasked even inside `data-si-unmask`:
+  - `input[type=password]`, `autocomplete` containing `password`, `cc-` (card number, CVC,
+    expiry, …) or `one-time-code`: replaced by a same-size placeholder, with no value and
+    no input events (a field that was a password stays masked after a "show password"
+    toggle).
+  - inputs, textareas and selects whose `name` or `id` has the **token** `otp`, `cvv`,
+    `cvc` or `cvn`. Names are split at non-alphanumerics, camelCase and letter/digit
+    boundaries, so `otpCode`, `card_cvv`, `user-otp`, `CVC2` match and `footprint` or
+    `hotpot` do not. These are recorded as fields, but their value is always the same
+    6-character mask, whatever its length, and never used for click labels. The SDK does
+    not write anything to your page to do this.
 - **`data-si-block`**: the element and everything inside it are never recorded.
 - **`data-si-unmask`**: inputs inside the element are recorded unmasked (except sensitive
   fields, see above).
