@@ -1,12 +1,16 @@
 package io.sessioninsights.processor;
 
 import com.github.luben.zstd.Zstd;
+import io.sessioninsights.common.Topics;
 import io.sessioninsights.common.wire.ReplayEnvelope;
 import io.sessioninsights.common.wire.WireJson;
 import io.sessioninsights.processor.Fixtures.Session;
 import io.sessioninsights.processor.store.ManifestRow;
 import io.sessioninsights.processor.store.ReplayObjectStore;
+import org.apache.kafka.clients.producer.RecordMetadata;
+import org.apache.kafka.common.TopicPartition;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Value;
 import tools.jackson.databind.JsonNode;
 
 import java.time.Duration;
@@ -19,6 +23,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 
 class ReplayPipelineTest extends ProcessorIntegrationTest {
+
+    @Value("${processor.kafka.replay.group-id}")
+    String replayGroup;
 
     @Test
     void chunksBecomeZstdObjectsAtTheTenantKeyAndManifestRows() {
@@ -63,9 +70,13 @@ class ReplayPipelineTest extends ProcessorIntegrationTest {
         await().atMost(Duration.ofSeconds(30)).until(() -> manifestStore.findChunks(s.tenantId(), s.sessionId()).size() == 1);
         byte[] before = objectStore.get(s.tenantId(), s.sessionId(), 0);
 
-        ProcessorTestInfra.send(List.of(Fixtures.chunkRecord(s, chunk)));
-        await().atMost(Duration.ofSeconds(30)).until(() -> rawManifestRows(s) == 2);
+        RecordMetadata again = ProcessorTestInfra.send(List.of(Fixtures.chunkRecord(s, chunk))).getFirst();
+        // the redelivery was processed (a background merge may already have collapsed the raw duplicate)
+        TopicPartition partition = new TopicPartition(Topics.REPLAY_CHUNKS, again.partition());
+        await().atMost(Duration.ofSeconds(30)).until(() ->
+                ProcessorTestInfra.committedOffset(replayGroup, partition) > again.offset());
 
+        assertThat(rawManifestRows(s)).isBetween(1L, 2L);
         assertThat(manifestStore.findChunks(s.tenantId(), s.sessionId())).hasSize(1);
         assertThat(objectStore.get(s.tenantId(), s.sessionId(), 0)).isEqualTo(before);
         assertThat(ProcessorTestInfra.S3.listObjectsV2(b -> b.bucket(ProcessorTestInfra.BUCKET)
