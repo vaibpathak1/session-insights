@@ -23,7 +23,8 @@ class ApiApplicationTests extends ApiIntegrationTest {
         assertThat(flyway.info().applied()).extracting(m -> m.getVersion().getVersion())
                 .containsExactly("1", "2", "3", "4");
         assertThat(clickHouseClient.queryAll("SELECT version FROM schema_migrations ORDER BY version"))
-                .extracting(r -> r.getLong("version")).containsExactly(1L);
+                .extracting(r -> r.getLong("version")).containsExactly(1L, 2L);
         assertThat(clickHouseClient.queryAll("EXISTS TABLE events").getFirst().getInteger(1)).isEqualTo(1);
+        assertThat(clickHouseClient.queryAll("EXISTS TABLE replay_chunks").getFirst().getInteger(1)).isEqualTo(1);
     }
 }

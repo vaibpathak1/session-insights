@@ -5,8 +5,8 @@ Record user sessions, replay them, detect friction automatically, and let a loca
 triage problem sessions, with humans reviewing anything uncertain.
 
 > **Status:** Milestone M0 complete (local stack + build verified). Working towards M1: schemas (Phase 1), the
-> collector API → Kafka (Phase 2) and the browser SDK (Phase 3) are done; sessions are recorded and reach
-> Kafka, but nothing consumes them yet (event processing is next).
+> collector API → Kafka (Phase 2), the browser SDK (Phase 3) and the event processor (Phase 4) are done;
+> recorded sessions land in ClickHouse (events) and object storage (replay chunks). Session lifecycle is next.
 > See [Roadmap](#roadmap).
 
 ## Architecture
@@ -110,6 +110,25 @@ same flow in Chromium and checks what reached Kafka:
 
 ```bash
 ./scripts/e2e-sdk.sh
+```
+
+### Persist sessions with the event processor (Phase 4)
+
+With the collector running (above) and the ClickHouse migrations applied (api-service ran once):
+
+```bash
+mvn -q -pl services/event-processor spring-boot:run     # http://localhost:8082
+```
+
+Events land in ClickHouse `events` and replay chunks in the `session-replays` bucket as
+`tenants/{tenant}/sessions/{session}/{seq:06d}.json.zst`, listed in `replay_chunks`
+(query with `FINAL`). Undeliverable records go to the `.dlt` topics with an `si-dlt-reason`
+header; a ClickHouse or S3 outage pauses consumption instead and nothing is dead-lettered
+([ADR-0011](docs/adr/0011-consumer-failure-handling.md)). The pipeline e2e test follows the SDK
+session through to both stores and applies the same privacy checks there:
+
+```bash
+./scripts/e2e-pipeline.sh
 ```
 
 ## Repository layout

@@ -2,10 +2,14 @@
  * End-to-end privacy test (Phase 3). Drives the demo site in Chromium with the real SDK,
  * then reads telemetry.events.v1 and replay.chunks.v1 from Kafka and checks that what was
  * typed into sensitive or blocked fields appears nowhere. Run via scripts/e2e-sdk.sh.
+ *
+ * With E2E_PIPELINE=1 (scripts/e2e-pipeline.sh, Phase 4) it then follows the session through
+ * event-processor into ClickHouse and object storage and applies the same privacy bar there.
  */
 import { randomBytes } from 'node:crypto';
 import { expect, test } from '@playwright/test';
 import { consumeTopic, type KafkaRecord } from './kafka';
+import { clickhouse, s3Get, s3List, unzstd } from './stores';
 
 const TOPIC_EVENTS = 'telemetry.events.v1';
 const TOPIC_REPLAY = 'replay.chunks.v1';
@@ -25,14 +29,20 @@ const SECRETS = {
 };
 const UNMASKED_NICKNAME = `nick-${run}`;
 
+const PIPELINE = process.env.E2E_PIPELINE === '1';
+
 interface Envelope {
+  tenantId: string;
   sessionId: string;
   event?: { type: string };
   chunkSeq?: number;
   events?: Array<{ type: number }>;
 }
 
-test('sensitive, blocked and normal inputs never reach Kafka unmasked', async ({ page }) => {
+test('sensitive, blocked and normal inputs never reach Kafka (or the stores) unmasked', async ({
+  page,
+}) => {
+  if (PIPELINE) test.setTimeout(240_000);
   // Long tasks on this near-empty demo page are attributable to the SDK.
   await page.addInitScript(() => {
     const w = window as unknown as { __longTasks: number[] };
@@ -157,4 +167,81 @@ test('sensitive, blocked and normal inputs never reach Kafka unmasked', async ({
   // Sanity: input recording really happened (the opt-in field is visible), so the absence
   // of secrets above is not vacuous.
   expect(summary.unmaskedNicknameRecorded).toBe(true);
+
+  if (!PIPELINE) return;
+
+  // ---- Phase 4: the same session in ClickHouse and object storage (event-processor) ----
+  const tenantId = (JSON.parse(events[0]!.value) as Envelope).tenantId;
+  const ids = { t: tenantId, s: sessionId! };
+  const uniqueEvents = events.length - summary.duplicateEvents;
+  const uniqueChunks = [...new Set(chunkSeqs)];
+
+  interface ManifestRow {
+    chunk_seq: number;
+    object_key: string;
+    event_count: number;
+    has_full_snapshot: number;
+  }
+  let rows: Record<string, unknown>[] = [];
+  let manifest: ManifestRow[] = [];
+  const storeDeadline = Date.now() + 60_000;
+  while (Date.now() < storeDeadline) {
+    rows = await clickhouse(
+      'SELECT * FROM events FINAL WHERE tenant_id = {t:UUID} AND session_id = {s:UUID} ORDER BY ts',
+      ids,
+    );
+    manifest = await clickhouse<ManifestRow>(
+      'SELECT chunk_seq, object_key, event_count, has_full_snapshot FROM replay_chunks FINAL' +
+        ' WHERE tenant_id = {t:UUID} AND session_id = {s:UUID} ORDER BY chunk_seq',
+      ids,
+    );
+    if (rows.length >= uniqueEvents && manifest.length >= uniqueChunks.length) break;
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+
+  const prefix = `tenants/${tenantId}/sessions/${sessionId}/`;
+  const listed = (await s3List(prefix)).sort();
+  const objects: string[] = [];
+  for (const m of manifest) {
+    const bytes = await s3Get(m.object_key);
+    objects.push(bytes ? unzstd(bytes) : '');
+  }
+  const stored = [...rows.map((r) => JSON.stringify(r)), ...objects].join('\n');
+  const pipelineSummary = {
+    clickhouseRows: rows.length,
+    rowEventTypes: [...new Set(rows.map((r) => r.event_type as string))].sort(),
+    manifestChunkSeqs: manifest.map((m) => m.chunk_seq),
+    objectsListed: listed.length,
+    storedReplayEvents: objects.reduce(
+      (n, o) => n + (o ? (JSON.parse(o) as unknown[]).length : 0),
+      0,
+    ),
+    secretsFound: Object.entries(SECRETS)
+      .filter(([, secret]) => stored.includes(secret))
+      .map(([k]) => k),
+    normalInputMasked: stored.includes('*'.repeat(SECRETS.normalInput.length)),
+    unmaskedNicknameStored: stored.includes(UNMASKED_NICKNAME),
+  };
+  console.log(`E2E pipeline summary:\n${JSON.stringify(pipelineSummary, null, 2)}`);
+
+  // every event exactly once (FINAL), with its tenant/session
+  expect(rows).toHaveLength(uniqueEvents);
+  expect(rows.every((r) => r.tenant_id === tenantId && r.session_id === sessionId)).toBe(true);
+  expect(pipelineSummary.rowEventTypes).toEqual(expect.arrayContaining([...types]));
+  // manifest: every chunk, in order from 0, chunk 0 has the full snapshot, objects exist
+  expect(pipelineSummary.manifestChunkSeqs).toEqual(uniqueChunks);
+  expect(manifest[0]!.chunk_seq).toBe(0);
+  expect(manifest[0]!.has_full_snapshot).toBe(1);
+  expect(listed).toEqual(manifest.map((m) => m.object_key).sort());
+  expect(listed.every((k) => k.startsWith(prefix) && /\/\d{6}\.json\.zst$/.test(k))).toBe(true);
+  expect(objects.every((o) => o.length > 0)).toBe(true);
+  expect(
+    manifest.every((m, i) => (JSON.parse(objects[i]!) as unknown[]).length === m.event_count),
+  ).toBe(true);
+
+  // The privacy bar, applied to what is stored.
+  expect(pipelineSummary.secretsFound).toEqual([]);
+  expect(stored).not.toContain(SECRETS.normalInput);
+  expect(pipelineSummary.normalInputMasked).toBe(true);
+  expect(pipelineSummary.unmaskedNicknameStored).toBe(true);
 });

@@ -3,10 +3,76 @@ spring:
     name: event-processor
   threads:
     virtual:
-      enabled: true   # ADR-0001: virtual threads for all blocking I/O
+      enabled: true   # ADR-0001: virtual threads for all blocking I/O (incl. Kafka listener threads)
+  # ADR-0004 / ADR-0011: batch listeners, manual commit only after the batch is written.
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP:localhost:9092}
+    consumer:
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      # raw bytes: the listener parses envelopes itself, so a dead-lettered record keeps its exact value
+      value-deserializer: org.apache.kafka.common.serialization.ByteArrayDeserializer
+      enable-auto-commit: false
+      auto-offset-reset: earliest
+      properties:
+        # listener work per poll must finish within this, retries included (the error
+        # handler keeps polling while it backs off)
+        max.poll.interval.ms: 300000
+    listener:
+      type: batch
+      ack-mode: batch
+      # topics are declared by infra (kafka-init); start even if they do not exist yet
+      missing-topics-fatal: false
+    # dead-letter producer (ADR-0004 settings)
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.ByteArraySerializer
+      acks: all
+      compression-type: zstd
+      properties:
+        enable.idempotence: true
+        linger.ms: 20
+        # replay chunks are up to 4 MB (topic max.message.bytes) plus headers
+        max.request.size: 4259840
 
 server:
   port: 8082
+
+# Defaults match .env.example (local development only); override via environment.
+processor:
+  kafka:
+    # = partitions per topic (KAFKA_TOPIC_PARTITIONS); more consumers than partitions sit idle
+    concurrency: ${KAFKA_TOPIC_PARTITIONS:6}
+    events:
+      group-id: event-processor.events
+      max-poll-records: 2000
+      fetch-min-bytes: 262144      # wait for ~256 KB or fetch-max-wait-ms, for large inserts
+      fetch-max-wait-ms: 500
+    replay:
+      group-id: event-processor.replay
+      max-poll-records: 100        # chunks are up to 4 MB each
+      fetch-max-wait-ms: 500
+  clickhouse:
+    endpoint: ${CLICKHOUSE_URL:http://localhost:8123}
+    database: ${CLICKHOUSE_DB:insights}
+    username: ${CLICKHOUSE_USER:insights}
+    password: ${CLICKHOUSE_PASSWORD:insights_dev_pw}
+    connect-timeout: 5s
+    socket-timeout: 30s
+    insert-timeout: 60s
+  s3:
+    endpoint: ${S3_ENDPOINT:http://localhost:8333}
+    region: ${S3_REGION:us-east-1}
+    bucket: ${S3_REPLAY_BUCKET:session-replays}
+    access-key: ${S3_ACCESS_KEY:insights_dev_key}
+    secret-key: ${S3_SECRET_KEY:insights_dev_secret}
+    max-concurrency: 16            # parallel PUTs per batch
+    api-call-timeout: 30s
+  retry:                           # while a store is unavailable (ADR-0011)
+    initial-interval: 500ms
+    multiplier: 2.0
+    max-interval: 30s
+  replay:
+    zstd-level: 3
 
 management:
   endpoints:
