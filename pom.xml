@@ -48,6 +48,8 @@
         <aws-sdk.version>2.55.6</aws-sdk.version>
         <!-- zstd for replay chunk objects (BSD-2-Clause). Also pins the version kafka-clients pulls in. -->
         <zstd-jni.version>1.5.7-20</zstd-jni.version>
+        <!-- User-agent parsing in event-processor (Apache-2.0). -->
+        <uap-java.version>1.6.1</uap-java.version>
         <!-- ADR-0001: surface virtual-thread pinning (Java 21) in local runs and tests -->
         <pinning.trace>-Djdk.tracePinnedThreads=short</pinning.trace>
     </properties>
@@ -99,6 +101,11 @@
                 <groupId>com.github.luben</groupId>
                 <artifactId>zstd-jni</artifactId>
                 <version>${zstd-jni.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.ua-parser</groupId>
+                <artifactId>uap-java</artifactId>
+                <version>${uap-java.version}</version>
             </dependency>
             <dependency>
                 <groupId>com.bucket4j</groupId>
