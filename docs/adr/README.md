@@ -17,6 +17,7 @@ that supersedes the old one; do not edit history.
 | [0010](0010-edge-tenant-resolution.md) | Tenant resolution at the ingestion edge (SECURITY DEFINER lookup, collector role, key cache) | Accepted (CORS §7 superseded by 0012) |
 | [0011](0011-consumer-failure-handling.md) | Failure handling in consumers: poison → DLT (incl. store-rejected), store outage → unbounded back-off | Accepted (dead-lettering mechanism superseded by 0014) |
 | [0012](0012-readable-auth-errors.md) | Readable auth errors for browsers: preflight always succeeds, 401/403 echo the origin | Accepted |
+| [0013](0013-api-auth-and-tenant-binding.md) | Dev-grade API auth (HTTP Basic, dev profile only, fail closed), tenant binding, 404 for other tenants | Accepted |
 | [0014](0014-batch-dead-lettering.md) | Dead-letter all poison records of a batch in one pass; a failed DLT publish is an outage | Accepted |
 
 Template: Context → Decision → Consequences → Alternatives considered.

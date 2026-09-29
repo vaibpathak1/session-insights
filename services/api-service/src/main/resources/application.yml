@@ -41,6 +41,24 @@ clickhouse:
 
 server:
   port: 8080
+  compression:              # replay chunks are JSON of up to 16 MB
+    enabled: true
+    mime-types: application/json
+    min-response-size: 2KB
+
+# Dev-grade API authentication (ADR-0013): dev profile only, HTTP Basic with this password for
+# any active app user's email. Every other profile refuses to start until OIDC (Phase 11).
+api:
+  dev-auth:
+    password: ${DEV_ADMIN_PASSWORD:}
+
+# Replay objects (read-only here; event-processor writes them). Defaults match .env.example.
+s3:
+  endpoint: ${S3_ENDPOINT:http://localhost:8333}
+  region: ${S3_REGION:us-east-1}
+  bucket: ${S3_REPLAY_BUCKET:session-replays}
+  access-key: ${S3_ACCESS_KEY:insights_dev_key}
+  secret-key: ${S3_SECRET_KEY:insights_dev_secret}
 
 management:
   endpoints:
