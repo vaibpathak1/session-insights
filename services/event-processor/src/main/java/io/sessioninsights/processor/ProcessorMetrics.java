@@ -68,9 +68,10 @@ public class ProcessorMetrics {
         }
     }
 
-    public void batch(String topic, int records) {
+    /** One listener invocation; the sum over time is how many records each listener processed. */
+    public void batch(String listener, String topic, int records) {
         DistributionSummary.builder(BATCH_SIZE).description("Records per consumed batch")
-                .tag("topic", topic).register(registry).record(records);
+                .tag("listener", listener).tag("topic", topic).register(registry).record(records);
     }
 
     public void chunkStored(long compressedBytes) {

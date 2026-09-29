@@ -4,11 +4,11 @@ import io.sessioninsights.common.Topics;
 import io.sessioninsights.common.wire.EventType;
 import io.sessioninsights.common.wire.TelemetryEnvelope;
 import io.sessioninsights.processor.ProcessorMetrics;
+import io.sessioninsights.processor.kafka.DeadLetters;
 import io.sessioninsights.processor.ingest.BisectingWriter;
 import io.sessioninsights.processor.ingest.DltReason;
 import io.sessioninsights.processor.ingest.EnvelopeReader;
 import io.sessioninsights.processor.ingest.PoisonRecordException;
-import io.sessioninsights.processor.ingest.RecordFailures;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
@@ -41,11 +41,13 @@ public class SessionTracker {
 
     private final SessionStore store;
     private final UserAgents userAgents;
+    private final DeadLetters deadLetters;
     private final ProcessorMetrics metrics;
 
-    public SessionTracker(SessionStore store, UserAgents userAgents, ProcessorMetrics metrics) {
+    public SessionTracker(SessionStore store, UserAgents userAgents, DeadLetters deadLetters, ProcessorMetrics metrics) {
         this.store = store;
         this.userAgents = userAgents;
+        this.deadLetters = deadLetters;
         this.metrics = metrics;
     }
 
@@ -56,6 +58,7 @@ public class SessionTracker {
                     "fetch.min.bytes=${processor.kafka.events.fetch-min-bytes}",
                     "fetch.max.wait.ms=${processor.kafka.events.fetch-max-wait-ms}"})
     public void onBatch(List<ConsumerRecord<String, byte[]>> records) {
+        metrics.batch(ID, Topics.TELEMETRY_EVENTS, records.size());
         Map<Key, Aggregate> sessions = new LinkedHashMap<>();
         for (ConsumerRecord<String, byte[]> record : records) {
             TelemetryEnvelope envelope;
@@ -84,7 +87,7 @@ public class SessionTracker {
         for (BisectingWriter.Item<SessionUpdate> item : rejected) {
             recordsByUpdate.get(item.row()).forEach(r -> poison.put(r, DltReason.STORE_REJECTED));
         }
-        RecordFailures.raise(records, poison);
+        deadLetters.deadLetter(poison);   // ADR-0014: all at once, then the batch is acknowledged
     }
 
     private record Key(UUID tenantId, UUID sessionId) {

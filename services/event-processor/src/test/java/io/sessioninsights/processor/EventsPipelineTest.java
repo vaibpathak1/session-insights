@@ -125,7 +125,7 @@ class EventsPipelineTest extends ProcessorIntegrationTest {
         assertThat(registry.get(ProcessorMetrics.ROWS_INSERTED).tag("table", "events").counter().count()).isPositive();
         assertThat(registry.get(ProcessorMetrics.INSERT_LATENCY).tag("table", "events").tag("outcome", "success")
                 .timer().count()).isPositive();
-        assertThat(registry.get(ProcessorMetrics.BATCH_SIZE).tag("topic", "telemetry.events.v1").summary().count())
+        assertThat(registry.get(ProcessorMetrics.BATCH_SIZE).tag("listener", "events").tag("topic", "telemetry.events.v1").summary().count())
                 .isPositive();
         await().atMost(Duration.ofSeconds(30)).untilAsserted(() ->
                 assertThat(registry.find("kafka.consumer.fetch.manager.records.lag.max").meters()).isNotEmpty());

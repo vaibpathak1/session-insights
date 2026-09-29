@@ -14,6 +14,8 @@ import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.listener.CommonErrorHandler;
 import org.springframework.util.backoff.ExponentialBackOff;
 
+import java.time.Duration;
+
 /**
  * Batch listeners with manual commit after a successful write (AckMode.BATCH, see
  * {@code application.yml}) and the ADR-0011 error handler.
@@ -39,6 +41,12 @@ class KafkaConfig {
         platformThreads.setVirtualThreads(false);
         factory.setContainerCustomizer(container -> container.getContainerProperties().setListenerTaskExecutor(platformThreads));
         return factory;
+    }
+
+    /** Batch dead-lettering for the listeners (ADR-0014); acks awaited for at most 30 s. */
+    @Bean
+    DeadLetters deadLetters(KafkaTemplate<String, byte[]> template, ProcessorMetrics metrics) {
+        return new DeadLetters(template, metrics, Duration.ofSeconds(30));
     }
 
     @Bean

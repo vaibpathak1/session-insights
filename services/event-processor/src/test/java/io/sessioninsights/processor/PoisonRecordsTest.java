@@ -55,7 +55,7 @@ class PoisonRecordsTest extends ProcessorIntegrationTest {
                 .isEqualTo(sent.get(1).offset());
         assertThat(dead.headers().lastHeader(KafkaHeaders.DLT_EXCEPTION_MESSAGE)).isNull();
         assertThat(dead.headers().lastHeader(KafkaHeaders.DLT_EXCEPTION_STACKTRACE)).isNull();
-        assertThat(output.getAll()).contains("reason=missing_tenant").doesNotContain(secret);
+        assertThat(output.getAll()).contains("missing_tenant=1").doesNotContain(secret);
     }
 
     @Test
@@ -100,7 +100,7 @@ class PoisonRecordsTest extends ProcessorIntegrationTest {
         await().atMost(WAIT).until(() -> finalEventRows(s.tenantId(), s.sessionId()) == 4);
         assertThat(eventStore.findEvents(s.tenantId(), s.sessionId()))
                 .extracting(r -> r.targetText()).containsExactly("ok-1", "ok-2", "ok-3", "later");
-        assertThat(output.getAll()).contains("reason=store_rejected").doesNotContain(secret);
+        assertThat(output.getAll()).contains("store_rejected=1").doesNotContain(secret);
     }
 
     @Test

@@ -2,6 +2,7 @@ package io.sessioninsights.processor.ingest;
 
 import io.sessioninsights.common.Topics;
 import io.sessioninsights.processor.ProcessorMetrics;
+import io.sessioninsights.processor.kafka.DeadLetters;
 import io.sessioninsights.processor.store.ManifestRow;
 import io.sessioninsights.processor.store.ReplayManifestStore;
 import io.sessioninsights.processor.store.ReplayObjectStore;
@@ -35,15 +36,18 @@ public class ReplayListener {
 
     private final ReplayObjectStore objects;
     private final ReplayManifestStore manifest;
+    private final DeadLetters deadLetters;
     private final ProcessorMetrics metrics;
     private final int zstdLevel;
     private final int maxParallelPuts;
 
-    public ReplayListener(ReplayObjectStore objects, ReplayManifestStore manifest, ProcessorMetrics metrics,
+    public ReplayListener(ReplayObjectStore objects, ReplayManifestStore manifest, DeadLetters deadLetters,
+                          ProcessorMetrics metrics,
                           @Value("${processor.replay.zstd-level}") int zstdLevel,
                           @Value("${processor.s3.max-concurrency}") int maxParallelPuts) {
         this.objects = objects;
         this.manifest = manifest;
+        this.deadLetters = deadLetters;
         this.metrics = metrics;
         this.zstdLevel = zstdLevel;
         this.maxParallelPuts = maxParallelPuts;
@@ -57,7 +61,7 @@ public class ReplayListener {
                     "fetch.max.bytes=${processor.kafka.replay.fetch-max-bytes}",
                     "max.partition.fetch.bytes=${processor.kafka.replay.max-partition-fetch-bytes}"})
     public void onBatch(List<ConsumerRecord<String, byte[]>> records) {
-        metrics.batch(Topics.REPLAY_CHUNKS, records.size());
+        metrics.batch(ID, Topics.REPLAY_CHUNKS, records.size());
         List<BisectingWriter.Item<ReplayChunk>> chunks = new ArrayList<>(records.size());
         Map<ConsumerRecord<String, byte[]>, DltReason> poison = new LinkedHashMap<>();
         for (ConsumerRecord<String, byte[]> record : records) {
@@ -76,7 +80,7 @@ public class ReplayListener {
             // the object stays behind without a manifest row: unreachable, harmless, expires with retention
             poison.put(rejected.record(), DltReason.STORE_REJECTED);
         }
-        RecordFailures.raise(records, poison);
+        deadLetters.deadLetter(poison);   // ADR-0014: all at once, then the batch is acknowledged
     }
 
     private void putAll(List<ReplayChunk> chunks) {
