@@ -42,7 +42,7 @@ User-facing features (F1–F15) and their acceptance criteria live in
 | FR-SDK-2 | Privacy by default: all inputs masked, opt-in unmasking per selector, block-list for elements | 3 ✅ |
 | FR-PRC-1 | Events persisted to ClickHouse, replay chunks to object storage | 4 ✅ |
 | FR-PRC-2 | At-least-once delivery with deduplication by client event id; poison messages to DLT | 4 ✅ (store outages never dead-letter, see ADR-0011) |
-| FR-SES-1 | Session closes after inactivity timeout (default 30 min) or explicit end | 5 |
+| FR-SES-1 | Session closes after inactivity timeout (default 30 min) or explicit end | 5 ✅ (inactivity; explicit end with the SDK `shutdown()` in a later phase) |
 | FR-SES-2 | Replay player streams chunks for a closed or live session | 5–6 |
 | FR-SIG-1 | Deterministic signals per session: rage clicks, dead clicks, error clusters, friction score | 8 |
 | FR-AI-1 | Only sessions above a friction threshold are sent for AI analysis | 9 |

@@ -2,6 +2,7 @@ package io.sessioninsights.processor.ingest;
 
 import io.sessioninsights.common.Topics;
 import io.sessioninsights.processor.ProcessorMetrics;
+import io.sessioninsights.processor.kafka.DeadLetters;
 import io.sessioninsights.processor.store.EventRow;
 import io.sessioninsights.processor.store.EventStore;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -16,7 +17,7 @@ import java.util.Map;
 /**
  * {@code telemetry.events.v1} → ClickHouse {@code events} (task 4.3). One insert per poll;
  * the batch is acknowledged only after it returns (AckMode.BATCH). Bad records are written
- * around, then reported with {@link RecordFailures#raise}, so only they reach the DLT.
+ * around, then all dead-lettered in one pass before the batch is acknowledged (ADR-0014).
  */
 @Component
 public class EventsListener {
@@ -24,10 +25,12 @@ public class EventsListener {
     public static final String ID = "events";
 
     private final EventStore store;
+    private final DeadLetters deadLetters;
     private final ProcessorMetrics metrics;
 
-    public EventsListener(EventStore store, ProcessorMetrics metrics) {
+    public EventsListener(EventStore store, DeadLetters deadLetters, ProcessorMetrics metrics) {
         this.store = store;
+        this.deadLetters = deadLetters;
         this.metrics = metrics;
     }
 
@@ -38,7 +41,7 @@ public class EventsListener {
                     "fetch.min.bytes=${processor.kafka.events.fetch-min-bytes}",
                     "fetch.max.wait.ms=${processor.kafka.events.fetch-max-wait-ms}"})
     public void onBatch(List<ConsumerRecord<String, byte[]>> records) {
-        metrics.batch(Topics.TELEMETRY_EVENTS, records.size());
+        metrics.batch(ID, Topics.TELEMETRY_EVENTS, records.size());
         List<BisectingWriter.Item<EventRow>> rows = new ArrayList<>(records.size());
         Map<ConsumerRecord<String, byte[]>, DltReason> poison = new LinkedHashMap<>();
         for (ConsumerRecord<String, byte[]> record : records) {
@@ -51,6 +54,6 @@ public class EventsListener {
         for (BisectingWriter.Item<EventRow> rejected : BisectingWriter.write(rows, store::insert)) {
             poison.put(rejected.record(), DltReason.STORE_REJECTED);
         }
-        RecordFailures.raise(records, poison);
+        deadLetters.deadLetter(poison);   // ADR-0014: all at once, then the batch is acknowledged
     }
 }

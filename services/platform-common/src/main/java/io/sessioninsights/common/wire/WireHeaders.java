@@ -7,6 +7,8 @@ public final class WireHeaders {
     public static final String SCHEMA_VERSION = "si-schema-version";
     /** On dead-letter records: why the record was dead-lettered (a low-cardinality code). */
     public static final String DLT_REASON = "si-dlt-reason";
+    /** On dead-letter records: the consumer group that dead-lettered it. */
+    public static final String DLT_CONSUMER = "si-dlt-consumer";
 
     /** Version of the envelopes in this package; bump on incompatible change. */
     public static final int CURRENT_SCHEMA_VERSION = 1;

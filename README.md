@@ -5,8 +5,9 @@ Record user sessions, replay them, detect friction automatically, and let a loca
 triage problem sessions, with humans reviewing anything uncertain.
 
 > **Status:** Milestone M0 complete (local stack + build verified). Working towards M1: schemas (Phase 1), the
-> collector API → Kafka (Phase 2), the browser SDK (Phase 3) and the event processor (Phase 4) are done;
-> recorded sessions land in ClickHouse (events) and object storage (replay chunks). Session lifecycle is next.
+> collector API → Kafka (Phase 2), the browser SDK (Phase 3), the event processor (Phase 4) and the session
+> lifecycle (Phase 5a) are done: sessions land in ClickHouse, object storage and PostgreSQL and close after
+> inactivity. The session read API (Phase 5b) is next.
 > See [Roadmap](#roadmap).
 
 ## Architecture
@@ -129,6 +130,20 @@ session through to both stores and applies the same privacy checks there:
 
 ```bash
 ./scripts/e2e-pipeline.sh
+```
+
+### Session lifecycle (Phase 5a)
+
+The processor also keeps `user_session` and `end_user` in PostgreSQL, connecting as
+`insights_processor` (created by migration V5, so run api-service once after pulling; the
+credentials are `POSTGRES_PROCESSOR_USER` / `POSTGRES_PROCESSOR_PASSWORD` in `.env`). A session
+closes after `SESSION_IDLE_TIMEOUT` (default `30m`) without events: its duration, page count
+and error count are computed from ClickHouse, and `CLOSED` is published on
+`session.lifecycle.v1`. Events arriving after that extend the session and publish `UPDATED`.
+To watch it locally:
+
+```bash
+SESSION_IDLE_TIMEOUT=30s SESSION_CLOSER_INTERVAL=5s mvn -q -pl services/event-processor spring-boot:run
 ```
 
 ## Repository layout

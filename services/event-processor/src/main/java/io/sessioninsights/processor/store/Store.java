@@ -4,6 +4,9 @@ package io.sessioninsights.processor.store;
 public enum Store {
     CLICKHOUSE("clickhouse"),
     S3("s3"),
+    POSTGRES("postgres"),
+    /** The dead-letter topics (ADR-0014): a failed DLT publish is an outage, not poison. */
+    KAFKA("kafka"),
     /** An unexpected failure that no store classified (a bug); handled like an outage. */
     UNKNOWN("unknown");
 

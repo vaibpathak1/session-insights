@@ -21,11 +21,15 @@ import org.apache.kafka.common.serialization.ByteArrayDeserializer;
 import org.apache.kafka.common.serialization.ByteArraySerializer;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.apache.kafka.common.serialization.StringSerializer;
+import org.flywaydb.core.Flyway;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.SingleConnectionDataSource;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.testcontainers.DockerClientFactory;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.kafka.KafkaContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.utility.MountableFile;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
@@ -38,6 +42,7 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.net.ServerSocket;
 import java.net.URI;
+import java.sql.Connection;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -63,6 +68,7 @@ public final class ProcessorTestInfra {
 
     public static final KafkaContainer KAFKA = new KafkaContainer(TestImages.KAFKA);
     public static final GenericContainer<?> CLICKHOUSE = TestContainers.clickhouse();
+    public static final PostgreSQLContainer POSTGRES = TestContainers.postgres();
     public static final GenericContainer<?> SEAWEEDFS = new GenericContainer<>(TestImages.SEAWEEDFS)
             .withCopyFileToContainer(MountableFile.forHostPath(repoRoot().resolve("infra/seaweedfs/s3.json")),
                     "/etc/seaweedfs/s3.json")
@@ -78,9 +84,17 @@ public final class ProcessorTestInfra {
     static {
         CLICKHOUSE.setPortBindings(List.of(freePort() + ":" + TestContainers.CLICKHOUSE_HTTP_PORT));
         SEAWEEDFS.setPortBindings(List.of(freePort() + ":" + S3_PORT, freePort() + ":9333"));
+        POSTGRES.setPortBindings(List.of(freePort() + ":5432"));
         KAFKA.start();
         CLICKHOUSE.start();
         SEAWEEDFS.start();
+        POSTGRES.start();
+        Flyway.configure()
+                .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
+                .locations("classpath:db/migration/postgres")
+                .placeholders(TestContainers.flywayPlaceholders())
+                .load()
+                .migrate();
         CLICKHOUSE_CLIENT = TestContainers.clickhouseClient(CLICKHOUSE);
         new ClickHouseMigrator(CLICKHOUSE_CLIENT).migrate();
         S3 = S3Client.builder()
@@ -110,6 +124,12 @@ public final class ProcessorTestInfra {
         registry.add("processor.s3.endpoint", ProcessorTestInfra::s3Endpoint);
         registry.add("processor.s3.api-call-timeout", () -> "5s");
         registry.add("processor.retry.max-interval", () -> "2s");
+        // tests drive closer passes explicitly (SessionCloserTest); no background closing
+        registry.add("processor.sessions.closer.enabled", () -> "false");
+        // the processor connects as its own role, exactly as in compose (RLS applies)
+        registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
+        registry.add("spring.datasource.username", () -> TestContainers.PROCESSOR_USER);
+        registry.add("spring.datasource.password", () -> TestContainers.PROCESSOR_PASSWORD);
     }
 
     public static String s3Endpoint() {
@@ -128,12 +148,38 @@ public final class ProcessorTestInfra {
         DockerClientFactory.instance().client().startContainerCmd(container.getContainerId()).exec();
         long deadline = System.nanoTime() + Duration.ofSeconds(60).toNanos();
         while (System.nanoTime() < deadline) {
-            if (container == CLICKHOUSE ? CLICKHOUSE_CLIENT.ping(1000) : s3Ready()) {
+            boolean ready = container == CLICKHOUSE ? CLICKHOUSE_CLIENT.ping(1000)
+                    : container == POSTGRES ? postgresReady() : s3Ready();
+            if (ready) {
                 return;
             }
             sleep(250);
         }
         throw new IllegalStateException("container did not come back: " + container.getDockerImageName());
+    }
+
+    private static boolean postgresReady() {
+        try (Connection c = owner().getDataSource().getConnection()) {
+            return c.isValid(1);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    // ------------------------------------------------------------- PostgreSQL
+
+    /** Superuser connection: bypasses RLS, for arranging fixtures and reading results. */
+    public static JdbcTemplate owner() {
+        return new JdbcTemplate(new SingleConnectionDataSource(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword(), true));
+    }
+
+    /** A tenant with one site, as api-service would create them. */
+    public static void createTenant(UUID tenantId, UUID siteId) {
+        JdbcTemplate db = owner();
+        db.update("INSERT INTO tenant (id, name) VALUES (?, 'processor-test') ON CONFLICT DO NOTHING", tenantId);
+        db.update("INSERT INTO site (id, tenant_id, name, allowed_origins) VALUES (?, ?, 'site', ARRAY['http://localhost:*'])"
+                + " ON CONFLICT DO NOTHING", siteId, tenantId);
     }
 
     private static boolean s3Ready() {
@@ -230,7 +276,9 @@ public final class ProcessorTestInfra {
                     new NewTopic(Topics.TELEMETRY_EVENTS, PARTITIONS, (short) 1),
                     new NewTopic(Topics.TELEMETRY_EVENTS_DLT, 1, (short) 1),
                     new NewTopic(Topics.REPLAY_CHUNKS, PARTITIONS, (short) 1).configs(replay),
-                    new NewTopic(Topics.REPLAY_CHUNKS_DLT, 1, (short) 1).configs(replay))).all().get();
+                    new NewTopic(Topics.REPLAY_CHUNKS_DLT, 1, (short) 1).configs(replay),
+                    new NewTopic(Topics.SESSION_LIFECYCLE, PARTITIONS, (short) 1)
+                            .configs(Map.of("cleanup.policy", "compact")))).all().get();
         } catch (InterruptedException | ExecutionException e) {
             throw new IllegalStateException("creating test topics failed", e);
         }

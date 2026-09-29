@@ -37,6 +37,9 @@ class StoreOutageTest extends ProcessorIntegrationTest {
     @Value("${processor.kafka.replay.group-id}")
     String replayGroup;
 
+    @Value("${processor.kafka.sessions.group-id}")
+    String sessionsGroup;
+
     @Test
     void clickHouseDownThenBack_nothingDeadLetteredOrCommittedThenEverythingOnce(CapturedOutput output) {
         Session s = Session.random();
@@ -103,6 +106,40 @@ class StoreOutageTest extends ProcessorIntegrationTest {
         assertThat(ProcessorTestInfra.records(Topics.REPLAY_CHUNKS_DLT, s.key(), 0, Duration.ofSeconds(1))).isEmpty();
         assertThat(count(output.getAll(), "s3 unavailable")).as("one warning per outage").isEqualTo(1);
         assertThat(output.getAll()).contains("s3 available again");
+    }
+
+    @Test
+    void postgresDownThenBack_trackerDeadLettersNothingCommitsNothingThenWritesTheSession(CapturedOutput output) {
+        Session s = Session.random();
+        List<ProducerRecord<String, byte[]>> records = new ArrayList<>();
+        for (int i = 0; i < 20; i++) {
+            records.add(Fixtures.eventRecord(s, Fixtures.envelope(s, Fixtures.click(NOW.toEpochMilli() + i, "pg-outage", null),
+                    NOW.plusSeconds(i), Fixtures.CHROME_MAC)));
+        }
+        var db = ProcessorTestInfra.owner();
+
+        ProcessorTestInfra.stop(ProcessorTestInfra.POSTGRES);
+        List<RecordMetadata> sent;
+        try {
+            sent = ProcessorTestInfra.send(records);
+            ProcessorTestInfra.sleep(OUTAGE_MILLIS);
+
+            assertThat(ProcessorTestInfra.records(Topics.TELEMETRY_EVENTS_DLT, s.key(), 0, Duration.ofSeconds(1))).isEmpty();
+            TopicPartition partition = new TopicPartition(Topics.TELEMETRY_EVENTS, sent.getFirst().partition());
+            assertThat(ProcessorTestInfra.committedOffset(sessionsGroup, partition)).isLessThanOrEqualTo(sent.getFirst().offset());
+            // the events writer does not depend on PostgreSQL and keeps going
+            await().atMost(Duration.ofSeconds(30)).until(() -> finalEventRows(s.tenantId(), s.sessionId()) == 20);
+        } finally {
+            ProcessorTestInfra.start(ProcessorTestInfra.POSTGRES);
+        }
+
+        await().atMost(Duration.ofSeconds(60)).until(() ->
+                db.queryForObject("SELECT count(*) FROM user_session WHERE id = ?", Long.class, s.sessionId()) == 1);
+        assertThat(db.queryForObject("SELECT last_active_at FROM user_session WHERE id = ?", java.sql.Timestamp.class,
+                s.sessionId()).toInstant()).isEqualTo(NOW.plusSeconds(19));
+        assertThat(ProcessorTestInfra.records(Topics.TELEMETRY_EVENTS_DLT, s.key(), 0, Duration.ofSeconds(1))).isEmpty();
+        assertThat(count(output.getAll(), "postgres unavailable")).as("one warning per outage").isEqualTo(1);
+        assertThat(output.getAll()).contains("postgres available again");
     }
 
     private static int count(String text, String needle) {

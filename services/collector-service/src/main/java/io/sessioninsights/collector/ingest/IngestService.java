@@ -67,11 +67,13 @@ public class IngestService {
 
         String anonymousId = validator.anonymousId(batch);
         String sdkVersion = validator.sdkVersion(batch);
+        String userAgent = request.userAgent() == null ? null
+                : BatchValidator.truncate(request.userAgent(), limits.fields().userAgent());
         ResolvedSite resolved = site;
         List<ProducerRecord<String, byte[]>> records = validated.accepted().stream()
                 .map(event -> record(Topics.TELEMETRY_EVENTS, batch.sessionId(), resolved.tenantId(),
                         new TelemetryEnvelope(WireHeaders.CURRENT_SCHEMA_VERSION, resolved.tenantId(), resolved.siteId(),
-                                batch.sessionId(), anonymousId, sdkVersion, receivedAt, event)))
+                                batch.sessionId(), anonymousId, sdkVersion, receivedAt, event, userAgent)))
                 .toList();
         if (!records.isEmpty()) {
             publisher.publish(Topics.TELEMETRY_EVENTS, records);

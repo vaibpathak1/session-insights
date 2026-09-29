@@ -69,6 +69,22 @@ class EventsEndpointTest extends CollectorIntegrationTest {
     }
 
     @Test
+    void userAgentIsCarriedInTheEnvelopeTruncatedTo512() {
+        SiteFixture site = newSite();
+        UUID session = UUID.randomUUID();
+        UUID other = UUID.randomUUID();
+        String chrome = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36";
+
+        post("/v1/events").key(site).header("User-Agent", chrome).body(batchJson(session, eventJson(UUID.randomUUID(), now()))).send();
+        post("/v1/events").key(site).header("User-Agent", "x".repeat(2000)).body(batchJson(other, eventJson(UUID.randomUUID(), now()))).send();
+
+        assertThat(envelope(CollectorTestInfra.records(Topics.TELEMETRY_EVENTS, session.toString(), 1).getFirst()).userAgent())
+                .isEqualTo(chrome);
+        assertThat(envelope(CollectorTestInfra.records(Topics.TELEMETRY_EVENTS, other.toString(), 1).getFirst()).userAgent())
+                .hasSize(512);
+    }
+
+    @Test
     void beaconPathTextPlainWithKeyInQuery() {
         SiteFixture site = newSite();
         UUID session = UUID.randomUUID();

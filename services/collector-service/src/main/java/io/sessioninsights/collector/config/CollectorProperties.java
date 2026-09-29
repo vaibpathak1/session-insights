@@ -39,7 +39,8 @@ public record CollectorProperties(
             @DefaultValue("8192") int errorStack,
             @DefaultValue("128") int eventName,
             @DefaultValue("128") int anonymousId,
-            @DefaultValue("32") int sdkVersion) {
+            @DefaultValue("32") int sdkVersion,
+            @DefaultValue("512") int userAgent) {
     }
 
     /** Site key cache (ADR-0010): revocation takes effect within {@code positiveTtl}. */

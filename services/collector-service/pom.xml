@@ -48,6 +48,17 @@
             <groupId>com.bucket4j</groupId>
             <artifactId>bucket4j_jdk17-core</artifactId>
         </dependency>
+        <!-- PoolWarmUp only: the collector runs no migrations and never talks to ClickHouse -->
+        <dependency>
+            <groupId>io.sessioninsights</groupId>
+            <artifactId>platform-db</artifactId>
+            <exclusions>
+                <exclusion>
+                    <groupId>com.clickhouse</groupId>
+                    <artifactId>client-v2</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
@@ -57,12 +68,6 @@
             <groupId>io.sessioninsights</groupId>
             <artifactId>platform-db</artifactId>
             <type>test-jar</type>
-            <scope>test</scope>
-        </dependency>
-        <!-- migrations are applied as the owner in tests; the collector itself never runs Flyway -->
-        <dependency>
-            <groupId>io.sessioninsights</groupId>
-            <artifactId>platform-db</artifactId>
             <scope>test</scope>
         </dependency>
         <dependency>

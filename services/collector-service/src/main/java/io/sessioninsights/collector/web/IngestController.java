@@ -55,7 +55,8 @@ public class IngestController {
                 request.getHeader(HttpHeaders.CONTENT_ENCODING),
                 request.getContentLengthLong(),
                 request.getInputStream(),
-                () -> CorsHeaders.allow(response, origin));
+                () -> CorsHeaders.allow(response, origin),
+                request.getHeader(HttpHeaders.USER_AGENT));
         return ResponseEntity.accepted().body(pipeline.apply(ingest));
     }
 

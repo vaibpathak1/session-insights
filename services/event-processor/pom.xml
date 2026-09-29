@@ -30,7 +30,22 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-kafka</artifactId>
         </dependency>
-        <!-- Hot path: ClickHouse Java client, no JPA, no PostgreSQL (ADR-0002). -->
+        <!-- Session lifecycle in PostgreSQL (Phase 5): plain JDBC as insights_processor, never JPA. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-jdbc</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+        <!-- PoolWarmUp (task 5.0); the processor runs no migrations -->
+        <dependency>
+            <groupId>io.sessioninsights</groupId>
+            <artifactId>platform-db</artifactId>
+        </dependency>
+        <!-- Hot path: ClickHouse Java client, no JPA (ADR-0002). -->
         <dependency>
             <groupId>com.clickhouse</groupId>
             <artifactId>client-v2</artifactId>
@@ -48,6 +63,15 @@
             <groupId>com.github.luben</groupId>
             <artifactId>zstd-jni</artifactId>
         </dependency>
+        <!-- session platform/browser from the User-Agent (task 5.2) -->
+        <dependency>
+            <groupId>com.github.ua-parser</groupId>
+            <artifactId>uap-java</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.github.ben-manes.caffeine</groupId>
+            <artifactId>caffeine</artifactId>
+        </dependency>
 
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -60,10 +84,15 @@
             <type>test-jar</type>
             <scope>test</scope>
         </dependency>
-        <!-- tests apply the ClickHouse migrations; the processor itself never runs them -->
+        <!-- tests apply the PostgreSQL migrations as the owner; the processor never runs Flyway -->
         <dependency>
-            <groupId>io.sessioninsights</groupId>
-            <artifactId>platform-db</artifactId>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-database-postgresql</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers-postgresql</artifactId>
             <scope>test</scope>
         </dependency>
         <dependency>

@@ -21,11 +21,14 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Failure handling for the batch listeners (ADR-0011).
+ * Failure handling for the batch listeners (ADR-0011, ADR-0014).
  * <ul>
- *   <li><b>Poison</b> ({@link BatchListenerFailedException}): no retries; offsets before the
- *       record are committed, the record is dead-lettered, the rest is redelivered
- *       ({@link DefaultErrorHandler}).</li>
+ *   <li><b>Poison</b>: the listeners dead-letter every poison record of a batch themselves
+ *       ({@link DeadLetters#deadLetter}) and return normally, so no poison reaches this
+ *       handler. A {@link BatchListenerFailedException} from elsewhere is still handled by
+ *       {@link DefaultErrorHandler}: no retries, the record is dead-lettered.</li>
+ *   <li><b>A failed dead-letter publish</b> ({@code Store.KAFKA}) is an outage like any
+ *       other: the batch is retried, nothing is acknowledged.</li>
  *   <li><b>Anything else</b> (a store outage, or an unexpected failure): never dead-lettered.
  *       The consumer is paused, keeps polling so it stays in the group, and re-invokes the
  *       listener with the same batch under exponential back-off, without limit. Nothing is
