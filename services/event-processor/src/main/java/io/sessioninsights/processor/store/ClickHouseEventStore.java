@@ -1,15 +1,11 @@
 package io.sessioninsights.processor.store;
 
-import com.clickhouse.client.api.Client;
-import com.clickhouse.client.api.query.GenericRecord;
+import io.sessioninsights.events.EventRow;
 import tools.jackson.core.JsonGenerator;
-import tools.jackson.databind.json.JsonMapper;
 
 import java.util.List;
-import java.util.Map;
-import java.util.UUID;
 
-/** {@link EventStore} on ClickHouse {@code events}. Reads always filter on {@code tenant_id} first. */
+/** {@link EventStore} on ClickHouse {@code events} (inserts; reads are in platform-events). */
 public class ClickHouseEventStore implements EventStore {
 
     static final String TABLE = "events";
@@ -19,32 +15,14 @@ public class ClickHouseEventStore implements EventStore {
             "error_message", "error_stack", "props");
 
     private final ClickHouseInserter inserter;
-    private final Client client;
-    private final JsonMapper mapper;
 
-    public ClickHouseEventStore(ClickHouseInserter inserter, Client client, JsonMapper mapper) {
+    public ClickHouseEventStore(ClickHouseInserter inserter) {
         this.inserter = inserter;
-        this.client = client;
-        this.mapper = mapper;
     }
 
     @Override
     public void insert(List<EventRow> rows, String deduplicationToken) {
         inserter.insert(TABLE, COLUMNS, rows, ClickHouseEventStore::write, deduplicationToken);
-    }
-
-    @Override
-    public List<EventRow> findEvents(UUID tenantId, UUID sessionId) {
-        String sql = """
-                SELECT event_id, tenant_id, site_id, session_id, anonymous_id, end_user_id, ts, ingested_at,
-                       event_type, event_name, url, path, page_title, target_selector, target_text,
-                       error_message, error_stack, toJSONString(props) AS props_json
-                FROM events FINAL
-                WHERE tenant_id = {tenantId:UUID} AND session_id = {sessionId:UUID}
-                ORDER BY ts, event_id""";
-        return client.queryAll(sql, Map.of("tenantId", tenantId, "sessionId", sessionId)).stream()
-                .map(this::read)
-                .toList();
     }
 
     private static void write(JsonGenerator g, EventRow row) {
@@ -76,20 +54,6 @@ public class ClickHouseEventStore implements EventStore {
         } else {
             g.writeTree(row.props());
         }
-    }
-
-    private EventRow read(GenericRecord r) {
-        Object endUser = r.getObject("end_user_id");
-        return new EventRow(
-                r.getUUID("event_id"), r.getUUID("tenant_id"), r.getUUID("site_id"), r.getUUID("session_id"),
-                r.getString("anonymous_id"),
-                endUser == null ? null : UUID.fromString(endUser.toString()),
-                r.getZonedDateTime("ts").toInstant(),
-                r.getZonedDateTime("ingested_at").toInstant(),
-                r.getString("event_type"), r.getString("event_name"), r.getString("url"), r.getString("path"),
-                r.getString("page_title"), r.getString("target_selector"), r.getString("target_text"),
-                r.getString("error_message"), r.getString("error_stack"),
-                mapper.readTree(r.getString("props_json")));
     }
 
     private static String nullToEmpty(String value) {

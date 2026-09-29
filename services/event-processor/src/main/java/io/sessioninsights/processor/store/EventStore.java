@@ -1,9 +1,13 @@
 package io.sessioninsights.processor.store;
 
-import java.util.List;
-import java.util.UUID;
+import io.sessioninsights.events.EventRow;
 
-/** Persistence of structured telemetry events (ADR-0002). */
+import java.util.List;
+
+/**
+ * Persistence of structured telemetry events (ADR-0002). Write side only; reads live in
+ * {@code platform-events} ({@code EventReader}), shared with api-service.
+ */
 public interface EventStore {
 
     /**
@@ -15,7 +19,4 @@ public interface EventStore {
      * @throws StoreUnavailableException the store could not take the write
      */
     void insert(List<EventRow> rows, String deduplicationToken);
-
-    /** A session's events for one tenant, deduplicated, in time order. */
-    List<EventRow> findEvents(UUID tenantId, UUID sessionId);
 }

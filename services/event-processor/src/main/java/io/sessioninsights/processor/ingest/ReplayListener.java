@@ -3,7 +3,7 @@ package io.sessioninsights.processor.ingest;
 import io.sessioninsights.common.Topics;
 import io.sessioninsights.processor.ProcessorMetrics;
 import io.sessioninsights.processor.kafka.DeadLetters;
-import io.sessioninsights.processor.store.ManifestRow;
+import io.sessioninsights.events.ManifestRow;
 import io.sessioninsights.processor.store.ReplayManifestStore;
 import io.sessioninsights.processor.store.ReplayObjectStore;
 import io.sessioninsights.processor.store.Store;

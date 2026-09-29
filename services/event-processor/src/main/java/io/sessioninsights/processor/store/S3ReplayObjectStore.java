@@ -1,10 +1,8 @@
 package io.sessioninsights.processor.store;
 
-import software.amazon.awssdk.core.ResponseBytes;
+import io.sessioninsights.events.ReplayObjects;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
-import software.amazon.awssdk.services.s3.model.GetObjectResponse;
-import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
 
 import java.util.UUID;
 
@@ -32,23 +30,12 @@ public class S3ReplayObjectStore implements ReplayObjectStore {
 
     @Override
     public void put(UUID tenantId, UUID sessionId, int chunkSeq, byte[] zstdJson) {
-        String key = ReplayObjectStore.objectKey(tenantId, sessionId, chunkSeq);
+        String key = ReplayObjects.objectKey(tenantId, sessionId, chunkSeq);
         try {
             s3.putObject(b -> b.bucket(bucket).key(key).contentType(CONTENT_TYPE),
                     RequestBody.fromBytes(zstdJson));
         } catch (RuntimeException e) {
             throw new StoreUnavailableException(Store.S3, describe(e));
-        }
-    }
-
-    @Override
-    public byte[] get(UUID tenantId, UUID sessionId, int chunkSeq) {
-        String key = ReplayObjectStore.objectKey(tenantId, sessionId, chunkSeq);
-        try {
-            ResponseBytes<GetObjectResponse> bytes = s3.getObjectAsBytes(b -> b.bucket(bucket).key(key));
-            return bytes.asByteArray();
-        } catch (NoSuchKeyException e) {
-            return null;
         }
     }
 

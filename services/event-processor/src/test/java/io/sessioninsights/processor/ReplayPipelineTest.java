@@ -5,8 +5,8 @@ import io.sessioninsights.common.Topics;
 import io.sessioninsights.common.wire.ReplayEnvelope;
 import io.sessioninsights.common.wire.WireJson;
 import io.sessioninsights.processor.Fixtures.Session;
-import io.sessioninsights.processor.store.ManifestRow;
-import io.sessioninsights.processor.store.ReplayObjectStore;
+import io.sessioninsights.events.ManifestRow;
+import io.sessioninsights.events.ReplayObjects;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.TopicPartition;
 import org.junit.jupiter.api.Test;
@@ -38,7 +38,7 @@ class ReplayPipelineTest extends ProcessorIntegrationTest {
                 Fixtures.chunkRecord(s, Fixtures.chunk(s, 1, second))));
 
         List<ManifestRow> manifest = await().atMost(Duration.ofSeconds(30))
-                .until(() -> manifestStore.findChunks(s.tenantId(), s.sessionId()), m -> m.size() == 2);
+                .until(() -> manifestReader.findChunks(s.tenantId(), s.sessionId()), m -> m.size() == 2);
 
         ManifestRow m0 = manifest.get(0);
         assertThat(m0.chunkSeq()).isZero();
@@ -54,12 +54,12 @@ class ReplayPipelineTest extends ProcessorIntegrationTest {
         assertThat(manifest.get(1).hasFullSnapshot()).isFalse();
         assertThat(manifest.get(1).objectKey()).endsWith("/000001.json.zst");
 
-        byte[] object = objectStore.get(s.tenantId(), s.sessionId(), 0);
+        byte[] object = objectReader.get(s.tenantId(), s.sessionId(), 0);
         assertThat(object).hasSize((int) m0.compressedBytes());
         assertThat(WireJson.mapper().readTree(decompress(object))).isEqualTo(first);
-        assertThat(WireJson.mapper().readTree(decompress(objectStore.get(s.tenantId(), s.sessionId(), 1))))
+        assertThat(WireJson.mapper().readTree(decompress(objectReader.get(s.tenantId(), s.sessionId(), 1))))
                 .isEqualTo(second);
-        assertThat(ReplayObjectStore.objectKey(s.tenantId(), s.sessionId(), 1)).isEqualTo(manifest.get(1).objectKey());
+        assertThat(ReplayObjects.objectKey(s.tenantId(), s.sessionId(), 1)).isEqualTo(manifest.get(1).objectKey());
     }
 
     @Test
@@ -67,8 +67,8 @@ class ReplayPipelineTest extends ProcessorIntegrationTest {
         Session s = Session.random();
         ReplayEnvelope chunk = Fixtures.chunk(s, 0, Fixtures.rrwebEvents(NOW.toEpochMilli(), 2, true, "again"));
         ProcessorTestInfra.send(List.of(Fixtures.chunkRecord(s, chunk)));
-        await().atMost(Duration.ofSeconds(30)).until(() -> manifestStore.findChunks(s.tenantId(), s.sessionId()).size() == 1);
-        byte[] before = objectStore.get(s.tenantId(), s.sessionId(), 0);
+        await().atMost(Duration.ofSeconds(30)).until(() -> manifestReader.findChunks(s.tenantId(), s.sessionId()).size() == 1);
+        byte[] before = objectReader.get(s.tenantId(), s.sessionId(), 0);
 
         RecordMetadata again = ProcessorTestInfra.send(List.of(Fixtures.chunkRecord(s, chunk))).getFirst();
         // the redelivery was processed (a background merge may already have collapsed the raw duplicate)
@@ -77,8 +77,8 @@ class ReplayPipelineTest extends ProcessorIntegrationTest {
                 ProcessorTestInfra.committedOffset(replayGroup, partition) > again.offset());
 
         assertThat(rawManifestRows(s)).isBetween(1L, 2L);
-        assertThat(manifestStore.findChunks(s.tenantId(), s.sessionId())).hasSize(1);
-        assertThat(objectStore.get(s.tenantId(), s.sessionId(), 0)).isEqualTo(before);
+        assertThat(manifestReader.findChunks(s.tenantId(), s.sessionId())).hasSize(1);
+        assertThat(objectReader.get(s.tenantId(), s.sessionId(), 0)).isEqualTo(before);
         assertThat(ProcessorTestInfra.S3.listObjectsV2(b -> b.bucket(ProcessorTestInfra.BUCKET)
                 .prefix("tenants/" + s.tenantId() + "/")).keyCount()).isEqualTo(1);
     }
@@ -93,9 +93,9 @@ class ReplayPipelineTest extends ProcessorIntegrationTest {
         ProcessorTestInfra.send(List.of(Fixtures.chunkRecord(s, Fixtures.chunk(s, 0, events))));
 
         ManifestRow m = await().atMost(Duration.ofSeconds(60))
-                .until(() -> manifestStore.findChunks(s.tenantId(), s.sessionId()), rows -> rows.size() == 1)
+                .until(() -> manifestReader.findChunks(s.tenantId(), s.sessionId()), rows -> rows.size() == 1)
                 .getFirst();
-        byte[] object = objectStore.get(s.tenantId(), s.sessionId(), 0);
+        byte[] object = objectReader.get(s.tenantId(), s.sessionId(), 0);
         assertThat(decompress(object)).isEqualTo(original);
         assertThat(m.hasFullSnapshot()).isTrue();
         assertThat(m.eventCount()).isEqualTo(2);

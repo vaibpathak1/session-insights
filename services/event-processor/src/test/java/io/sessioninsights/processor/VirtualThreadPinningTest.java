@@ -61,7 +61,7 @@ class VirtualThreadPinningTest extends ProcessorIntegrationTest {
 
         await().atMost(Duration.ofSeconds(60)).until(() -> sessions.stream().allMatch(s ->
                 finalEventRows(s.tenantId(), s.sessionId()) == 10
-                        && manifestStore.findChunks(s.tenantId(), s.sessionId()).size() == 4));
+                        && manifestReader.findChunks(s.tenantId(), s.sessionId()).size() == 4));
 
         RECORDING.stop();   // flushes pending events to the callback
         assertThat(PINNED).as("pinned virtual threads (JFR jdk.VirtualThreadPinned)").isEmpty();

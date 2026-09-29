@@ -90,18 +90,18 @@ class StoreOutageTest extends ProcessorIntegrationTest {
             ProcessorTestInfra.sleep(OUTAGE_MILLIS);
 
             assertThat(ProcessorTestInfra.records(Topics.REPLAY_CHUNKS_DLT, s.key(), 0, Duration.ofSeconds(1))).isEmpty();
-            assertThat(manifestStore.findChunks(s.tenantId(), s.sessionId())).as("no manifest row without its object").isEmpty();
+            assertThat(manifestReader.findChunks(s.tenantId(), s.sessionId())).as("no manifest row without its object").isEmpty();
             TopicPartition partition = new TopicPartition(Topics.REPLAY_CHUNKS, sent.getFirst().partition());
             assertThat(ProcessorTestInfra.committedOffset(replayGroup, partition)).isLessThanOrEqualTo(sent.getFirst().offset());
         } finally {
             ProcessorTestInfra.start(ProcessorTestInfra.SEAWEEDFS);
         }
 
-        await().atMost(Duration.ofSeconds(60)).until(() -> manifestStore.findChunks(s.tenantId(), s.sessionId()).size() == 5);
-        assertThat(manifestStore.findChunks(s.tenantId(), s.sessionId()))
+        await().atMost(Duration.ofSeconds(60)).until(() -> manifestReader.findChunks(s.tenantId(), s.sessionId()).size() == 5);
+        assertThat(manifestReader.findChunks(s.tenantId(), s.sessionId()))
                 .extracting(m -> m.chunkSeq()).containsExactly(0, 1, 2, 3, 4);
         for (int seq = 0; seq < 5; seq++) {
-            assertThat(objectStore.get(s.tenantId(), s.sessionId(), seq)).isNotNull();
+            assertThat(objectReader.get(s.tenantId(), s.sessionId(), seq)).isNotNull();
         }
         assertThat(ProcessorTestInfra.records(Topics.REPLAY_CHUNKS_DLT, s.key(), 0, Duration.ofSeconds(1))).isEmpty();
         assertThat(count(output.getAll(), "s3 unavailable")).as("one warning per outage").isEqualTo(1);

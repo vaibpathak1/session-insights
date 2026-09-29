@@ -30,6 +30,7 @@
         <module>services/platform-common</module>
         <module>services/platform-db</module>
         <module>services/platform-domain</module>
+        <module>services/platform-events</module>
         <module>services/collector-service</module>
         <module>services/event-processor</module>
         <module>services/analysis-worker</module>
@@ -50,6 +51,8 @@
         <zstd-jni.version>1.5.7-20</zstd-jni.version>
         <!-- User-agent parsing in event-processor (Apache-2.0). -->
         <uap-java.version>1.6.1</uap-java.version>
+        <!-- OpenAPI generation for the spec-matches test only (test scope; builds on Boot 4.1). -->
+        <springdoc.version>3.1.1</springdoc.version>
         <!-- ADR-0001: surface virtual-thread pinning (Java 21) in local runs and tests -->
         <pinning.trace>-Djdk.tracePinnedThreads=short</pinning.trace>
     </properties>
@@ -93,6 +96,11 @@
                 <version>${project.version}</version>
             </dependency>
             <dependency>
+                <groupId>io.sessioninsights</groupId>
+                <artifactId>platform-events</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
                 <groupId>com.clickhouse</groupId>
                 <artifactId>client-v2</artifactId>
                 <version>${clickhouse-client.version}</version>
@@ -106,6 +114,11 @@
                 <groupId>com.github.ua-parser</groupId>
                 <artifactId>uap-java</artifactId>
                 <version>${uap-java.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.springdoc</groupId>
+                <artifactId>springdoc-openapi-starter-webmvc-api</artifactId>
+                <version>${springdoc.version}</version>
             </dependency>
             <dependency>
                 <groupId>com.bucket4j</groupId>

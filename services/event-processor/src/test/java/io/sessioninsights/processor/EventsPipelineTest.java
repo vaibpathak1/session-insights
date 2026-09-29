@@ -3,7 +3,7 @@ package io.sessioninsights.processor;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.sessioninsights.common.wire.TelemetryEvent;
 import io.sessioninsights.processor.Fixtures.Session;
-import io.sessioninsights.processor.store.EventRow;
+import io.sessioninsights.events.EventRow;
 import io.sessioninsights.common.Topics;
 import io.sessioninsights.processor.ingest.EventsListener;
 import io.sessioninsights.processor.ingest.ReplayListener;
@@ -50,7 +50,7 @@ class EventsPipelineTest extends ProcessorIntegrationTest {
         ProcessorTestInfra.send(records);
 
         List<EventRow> rows = await().atMost(Duration.ofSeconds(30))
-                .until(() -> eventStore.findEvents(a.tenantId(), a.sessionId()), r -> r.size() == 5);
+                .until(() -> eventReader.findEvents(a.tenantId(), a.sessionId()), r -> r.size() == 5);
 
         for (int i = 0; i < 5; i++) {
             EventRow row = rows.get(i);
@@ -93,7 +93,7 @@ class EventsPipelineTest extends ProcessorIntegrationTest {
                 ProcessorTestInfra.committedOffset(eventsGroup, partition) > again.getLast().offset());
         assertThat(rawEventRows(s.tenantId(), s.sessionId())).isBetween(3L, 6L);
         assertThat(finalEventRows(s.tenantId(), s.sessionId())).isEqualTo(3);
-        assertThat(eventStore.findEvents(s.tenantId(), s.sessionId())).hasSize(3);
+        assertThat(eventReader.findEvents(s.tenantId(), s.sessionId())).hasSize(3);
     }
 
     @Test
@@ -107,13 +107,13 @@ class EventsPipelineTest extends ProcessorIntegrationTest {
                 Fixtures.eventRecord(sameSessionOtherTenant, Fixtures.click(NOW.toEpochMilli() + 1, "b", null))));
 
         await().atMost(Duration.ofSeconds(30)).until(() ->
-                eventStore.findEvents(sameSessionOtherTenant.tenantId(), a.sessionId()).size() == 2);
-        assertThat(eventStore.findEvents(a.tenantId(), a.sessionId()))
+                eventReader.findEvents(sameSessionOtherTenant.tenantId(), a.sessionId()).size() == 2);
+        assertThat(eventReader.findEvents(a.tenantId(), a.sessionId()))
                 .singleElement().satisfies(r -> {
                     assertThat(r.tenantId()).isEqualTo(a.tenantId());
                     assertThat(r.targetText()).isEqualTo("a");
                 });
-        assertThat(eventStore.findEvents(UUID.randomUUID(), a.sessionId())).isEmpty();
+        assertThat(eventReader.findEvents(UUID.randomUUID(), a.sessionId())).isEmpty();
     }
 
     @Test
