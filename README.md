@@ -5,9 +5,9 @@ Record user sessions, replay them, detect friction automatically, and let a loca
 triage problem sessions, with humans reviewing anything uncertain.
 
 > **Status:** Milestone M0 complete (local stack + build verified). Working towards M1: schemas (Phase 1), the
-> collector API → Kafka (Phase 2), the browser SDK (Phase 3), the event processor (Phase 4) and the session
-> lifecycle (Phase 5a) are done: sessions land in ClickHouse, object storage and PostgreSQL and close after
-> inactivity. The session read API (Phase 5b) is next.
+> collector API → Kafka (Phase 2), the browser SDK (Phase 3), the event processor (Phase 4) and sessions
+> (Phase 5: lifecycle and the read API) are done: sessions are recorded, closed after inactivity and
+> readable through `/api/v1`. The dashboard (Phase 6) is next.
 > See [Roadmap](#roadmap).
 
 ## Architecture
@@ -145,6 +145,23 @@ To watch it locally:
 ```bash
 SESSION_IDLE_TIMEOUT=30s SESSION_CLOSER_INTERVAL=5s mvn -q -pl services/event-processor spring-boot:run
 ```
+
+### Read sessions through the API (Phase 5b)
+
+api-service serves sessions, their events and their replay under `/api/v1`
+([OpenAPI](docs/api/openapi.yaml)). Until OIDC (Phase 11) it only starts with the `dev` profile,
+using HTTP Basic: the username is an app user's email (the dev seed creates `admin@example.com`),
+the password is `DEV_ADMIN_PASSWORD` from `.env` ([ADR-0013](docs/adr/0013-api-auth-and-tenant-binding.md)).
+Every request reads only the user's tenant; another tenant's session is `404`.
+
+```bash
+mvn -q -pl services/api-service spring-boot:run -Dspring-boot.run.profiles=dev   # http://localhost:8080
+curl -u "admin@example.com:$DEV_ADMIN_PASSWORD" 'http://localhost:8080/api/v1/sessions?limit=5'
+```
+
+The pipeline e2e (`./scripts/e2e-pipeline.sh`) now also reads the recorded session back through
+the API and waits for it to close; start the processor with `SESSION_IDLE_TIMEOUT=20s
+SESSION_CLOSER_INTERVAL=5s` for it.
 
 ## Repository layout
 
