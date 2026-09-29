@@ -1,0 +1,407 @@
+# Session Insights API (Phase 5, task 5.7). Hand-maintained; OpenApiSpecTest (api-service)
+# fails if it drifts from the controllers. Regenerate a draft: mvn -pl services/api-service test
+#   -Dtest=OpenApiSpecTest -Dopenapi.write=true  -> target/openapi.generated.json
+openapi: "3.1.0"
+info:
+  title: "Session Insights API"
+  version: "v1"
+  description: "Session list, events and replay for the dashboard (Phase 5). Every operation reads only the authenticated user's tenant (ADR-0013). Authentication is dev-grade HTTP Basic in the `dev` profile (username: an app user's email, password: `DEV_ADMIN_PASSWORD`) until OIDC (Phase 11); other profiles refuse to start."
+servers:
+  - url: "http://localhost:8080"
+    description: "Local api-service"
+security:
+  - basicAuth: []
+tags:
+  - name: "sessions"
+    description: "Sessions, events and replay."
+paths:
+  "/api/v1/sessions":
+    get:
+      tags:
+        - "sessions"
+      operationId: "listSessions"
+      parameters:
+        - name: "from"
+          in: "query"
+          required: false
+          schema:
+            type: "string"
+            format: "date-time"
+          description: "Sessions started at or after this instant (ISO-8601)."
+        - name: "to"
+          in: "query"
+          required: false
+          schema:
+            type: "string"
+            format: "date-time"
+          description: "Sessions started before this instant (ISO-8601)."
+        - name: "url"
+          in: "query"
+          required: false
+          schema:
+            type: "string"
+          description: "Entry URL contains this text (case-insensitive, literal; `%` and `_` are not wildcards)."
+        - name: "hasError"
+          in: "query"
+          required: false
+          schema:
+            type: "boolean"
+          description: "true: at least one error; false: none. Counters are computed when a session closes."
+        - name: "minDurationMs"
+          in: "query"
+          required: false
+          schema:
+            type: "integer"
+            format: "int64"
+          description: "Minimum duration in ms (0 while a session is open)."
+        - name: "maxDurationMs"
+          in: "query"
+          required: false
+          schema:
+            type: "integer"
+            format: "int64"
+          description: "Maximum duration in ms."
+        - name: "status"
+          in: "query"
+          required: false
+          schema:
+            type: "string"
+          description: "`open` or `closed`."
+        - name: "cursor"
+          in: "query"
+          required: false
+          schema:
+            type: "string"
+          description: "`nextCursor` of the previous page."
+        - name: "limit"
+          in: "query"
+          required: false
+          schema:
+            type: "integer"
+            format: "int32"
+            default: 50
+          description: "Page size, 1–200."
+      responses:
+        200:
+          description: "OK"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/SessionPage"
+        400:
+          "$ref": "#/components/responses/InvalidParameter"
+        401:
+          "$ref": "#/components/responses/Unauthorized"
+      summary: "List sessions"
+      description: "Newest first, keyset-paginated on (startedAt desc, id): pass `nextCursor` back as `cursor`; pages stay stable while new sessions arrive. Only the caller's tenant."
+  "/api/v1/sessions/{sessionId}":
+    get:
+      tags:
+        - "sessions"
+      operationId: "getSession"
+      parameters:
+        - name: "sessionId"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+          description: "Session id."
+      responses:
+        200:
+          description: "OK"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/SessionDetail"
+        400:
+          "$ref": "#/components/responses/InvalidParameter"
+        401:
+          "$ref": "#/components/responses/Unauthorized"
+        404:
+          "$ref": "#/components/responses/NotFound"
+      summary: "Get a session"
+      description: "The session and its visitor's traits, redacted server-side. Another tenant's session is 404."
+  "/api/v1/sessions/{sessionId}/replay":
+    get:
+      tags:
+        - "sessions"
+      operationId: "getReplayManifest"
+      parameters:
+        - name: "sessionId"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+          description: "Session id."
+      responses:
+        200:
+          description: "OK"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/ReplayManifest"
+        400:
+          "$ref": "#/components/responses/InvalidParameter"
+        401:
+          "$ref": "#/components/responses/Unauthorized"
+        404:
+          "$ref": "#/components/responses/NotFound"
+      summary: "Get the replay manifest"
+      description: "Chunks in `seq` order; chunk 0 starts with a full snapshot. Works for open (live) sessions."
+  "/api/v1/sessions/{sessionId}/replay/{seq}":
+    get:
+      tags:
+        - "sessions"
+      operationId: "getReplayChunk"
+      parameters:
+        - name: "sessionId"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+          description: "Session id."
+        - name: "seq"
+          in: "path"
+          required: true
+          schema:
+            type: "integer"
+            format: "int32"
+          description: "Chunk sequence number (from the manifest)."
+      responses:
+        200:
+          description: "OK"
+          content:
+            "application/json":
+              schema:
+                type: "array"
+                items:
+                  type: "object"
+        400:
+          "$ref": "#/components/responses/InvalidParameter"
+        401:
+          "$ref": "#/components/responses/Unauthorized"
+        404:
+          "$ref": "#/components/responses/NotFound"
+      summary: "Get a replay chunk"
+      description: "The chunk's rrweb event array, decompressed and streamed (send `Accept-Encoding: gzip`). Served only after the manifest row is confirmed for the caller's tenant; no presigned URLs."
+  "/api/v1/sessions/{sessionId}/events":
+    get:
+      tags:
+        - "sessions"
+      operationId: "listEvents"
+      parameters:
+        - name: "sessionId"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+          description: "Session id."
+        - name: "after"
+          in: "query"
+          required: false
+          schema:
+            type: "string"
+          description: "`nextCursor` of the previous page."
+        - name: "limit"
+          in: "query"
+          required: false
+          schema:
+            type: "integer"
+            format: "int32"
+            default: 500
+          description: "Page size, 1–1000."
+      responses:
+        200:
+          description: "OK"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/EventPage"
+        400:
+          "$ref": "#/components/responses/InvalidParameter"
+        401:
+          "$ref": "#/components/responses/Unauthorized"
+        404:
+          "$ref": "#/components/responses/NotFound"
+      summary: "List a session's events"
+      description: "Ordered by (ts, id), from ClickHouse. Pass `nextCursor` back as `after`. Works for open (live) sessions."
+components:
+  securitySchemes:
+    basicAuth:
+      type: "http"
+      scheme: "basic"
+      description: "Dev profile only (ADR-0013)."
+  responses:
+    Unauthorized:
+      description: "Missing or bad credentials."
+    NotFound:
+      description: "No such session for the caller's tenant (also for another tenant's session)."
+      content:
+        "application/json":
+          schema:
+            "$ref": "#/components/schemas/ApiError"
+    InvalidParameter:
+      description: "A malformed parameter (bad UUID, cursor, limit, status)."
+      content:
+        "application/json":
+          schema:
+            "$ref": "#/components/schemas/ApiError"
+  schemas:
+    SessionPage:
+      type: "object"
+      properties:
+        items:
+          type: "array"
+          items:
+            "$ref": "#/components/schemas/SessionSummary"
+        nextCursor:
+          type: "string"
+      description: "`nextCursor` is null on the last page."
+    SessionSummary:
+      type: "object"
+      properties:
+        id:
+          type: "string"
+          format: "uuid"
+        user:
+          "$ref": "#/components/schemas/UserRef"
+        status:
+          type: "string"
+        startedAt:
+          type: "string"
+          format: "date-time"
+        lastActiveAt:
+          type: "string"
+          format: "date-time"
+        endedAt:
+          type: "string"
+          format: "date-time"
+        durationMs:
+          type: "integer"
+          format: "int64"
+        pageCount:
+          type: "integer"
+          format: "int32"
+        errorCount:
+          type: "integer"
+          format: "int32"
+        entryUrl:
+          type: "string"
+        platform:
+          type: "string"
+        browser:
+          type: "string"
+        frictionScore:
+          type: "integer"
+          format: "int32"
+        analysisStatus:
+          type: "string"
+      description: "Counters and duration are computed from ClickHouse when a session closes (0 while `status` is `open`); `frictionScore` is null until signals exist (Phase 8)."
+    UserRef:
+      type: "object"
+      properties:
+        id:
+          type: "string"
+          format: "uuid"
+        externalId:
+          type: "string"
+        anonymousId:
+          type: "string"
+      description: "The visitor: `externalId` once identified, else `anonymousId`."
+    SessionDetail:
+      type: "object"
+      properties:
+        session:
+          "$ref": "#/components/schemas/SessionSummary"
+        siteId:
+          type: "string"
+          format: "uuid"
+        userTraits:
+          type: "object"
+      description: "A session with its visitor's traits (strings redacted: emails, card numbers, phone numbers)."
+    ChunkItem:
+      type: "object"
+      properties:
+        seq:
+          type: "integer"
+          format: "int32"
+        firstTs:
+          type: "string"
+          format: "date-time"
+        lastTs:
+          type: "string"
+          format: "date-time"
+        eventCount:
+          type: "integer"
+          format: "int32"
+        hasFullSnapshot:
+          type: "boolean"
+        compressedBytes:
+          type: "integer"
+          format: "int64"
+      description: "One replay chunk of the manifest."
+    ReplayManifest:
+      type: "object"
+      properties:
+        sessionId:
+          type: "string"
+          format: "uuid"
+        status:
+          type: "string"
+        chunks:
+          type: "array"
+          items:
+            "$ref": "#/components/schemas/ChunkItem"
+      description: "The chunks of a session's replay."
+    EventItem:
+      type: "object"
+      properties:
+        id:
+          type: "string"
+          format: "uuid"
+        type:
+          type: "string"
+        ts:
+          type: "string"
+          format: "date-time"
+        url:
+          type: "string"
+        path:
+          type: "string"
+        title:
+          type: "string"
+        targetSelector:
+          type: "string"
+        targetText:
+          type: "string"
+        errorMessage:
+          type: "string"
+        errorStack:
+          type: "string"
+        eventName:
+          type: "string"
+        props:
+          type: "object"
+      description: "One structured event; text fields were masked by the SDK and redacted by the collector."
+    EventPage:
+      type: "object"
+      properties:
+        items:
+          type: "array"
+          items:
+            "$ref": "#/components/schemas/EventItem"
+        nextCursor:
+          type: "string"
+      description: "`nextCursor` is null on the last page."
+    ApiError:
+      type: "object"
+      description: "Error body: `error` is `not_found`, `invalid_parameter`; `parameter` names the invalid parameter."
+      properties:
+        error:
+          type: "string"
+        parameter:
+          type: "string"
