@@ -9,6 +9,7 @@
 import { randomBytes } from 'node:crypto';
 import { expect, test } from '@playwright/test';
 import { consumeTopic, type KafkaRecord } from './kafka';
+import { apiGet } from './api';
 import { clickhouse, s3Get, s3List, unzstd } from './stores';
 
 const TOPIC_EVENTS = 'telemetry.events.v1';
@@ -42,7 +43,7 @@ interface Envelope {
 test('sensitive, blocked and normal inputs never reach Kafka (or the stores) unmasked', async ({
   page,
 }) => {
-  if (PIPELINE) test.setTimeout(240_000);
+  if (PIPELINE) test.setTimeout(360_000);
   // Long tasks on this near-empty demo page are attributable to the SDK.
   await page.addInitScript(() => {
     const w = window as unknown as { __longTasks: number[] };
@@ -244,4 +245,101 @@ test('sensitive, blocked and normal inputs never reach Kafka (or the stores) unm
   expect(stored).not.toContain(SECRETS.normalInput);
   expect(pipelineSummary.normalInputMasked).toBe(true);
   expect(pipelineSummary.unmaskedNicknameStored).toBe(true);
+
+  // ---- Phase 5b: the same session through the read API (dev auth, ADR-0013) ----
+  interface ApiSession {
+    id: string;
+    status: string;
+    durationMs: number;
+    pageCount: number;
+    errorCount: number;
+    entryUrl: string | null;
+  }
+  interface ApiEvent {
+    id: string;
+    type: string;
+    ts: string;
+  }
+  interface Chunk {
+    seq: number;
+    hasFullSnapshot: boolean;
+  }
+  const bodies: string[] = [];
+  const read = async <T>(path: string): Promise<T> => {
+    const { status, body } = await apiGet(path);
+    expect(status, `GET ${path}`).toBe(200);
+    bodies.push(body);
+    return JSON.parse(body) as T;
+  };
+
+  const list = await read<{ items: ApiSession[] }>('/sessions?limit=200');
+  expect(list.items.map((s) => s.id)).toContain(sessionId);
+
+  const apiEvents: ApiEvent[] = [];
+  let after: string | null = null;
+  do {
+    const page: { items: ApiEvent[]; nextCursor: string | null } = await read(
+      `/sessions/${sessionId}/events?limit=7${after ? `&after=${after}` : ''}`,
+    );
+    apiEvents.push(...page.items);
+    after = page.nextCursor;
+  } while (after);
+  expect(apiEvents).toHaveLength(uniqueEvents);
+  expect(new Set(apiEvents.map((e) => e.id)).size).toBe(uniqueEvents);
+  const eventTimes = apiEvents.map((e) => Date.parse(e.ts));
+  expect(eventTimes).toEqual([...eventTimes].sort((a, b) => a - b));
+
+  const apiReplay = await read<{ chunks: Chunk[] }>(`/sessions/${sessionId}/replay`);
+  expect(apiReplay.chunks.map((c) => c.seq)).toEqual(uniqueChunks);
+  expect(apiReplay.chunks[0]!.hasFullSnapshot).toBe(true);
+  const chunk0 = await read<Array<{ type: number }>>(`/sessions/${sessionId}/replay/0`);
+  expect(chunk0.slice(0, 2).map((e) => e.type)).toEqual([4, 2]);
+  for (const c of apiReplay.chunks.slice(1)) await read(`/sessions/${sessionId}/replay/${c.seq}`);
+
+  // Counters appear when the session closes (processor started with a short idle timeout)
+  const idleSeconds = Number(process.env.E2E_SESSION_IDLE_SECONDS ?? 20);
+  const closeDeadline = Date.now() + (idleSeconds + 60) * 1000;
+  let detail: { session: ApiSession } = await read(`/sessions/${sessionId}`);
+  while (detail.session.status !== 'closed' && Date.now() < closeDeadline) {
+    await new Promise((r) => setTimeout(r, 2000));
+    detail = await read(`/sessions/${sessionId}`);
+  }
+  // expected counters, from the ClickHouse rows read above (task 5.4 definitions)
+  const utc = (v: unknown) => Date.parse(`${String(v).replace(' ', 'T')}Z`);
+  const times = rows.map((r) => utc(r.ts));
+  const navigations = rows
+    .filter((r) => r.event_type === 'NAVIGATION')
+    .filter((r) => (r.props as { trigger?: string } | null)?.trigger !== 'replaceState')
+    .map((r) => String(r.url).split('#')[0]);
+  const expectedPages = navigations.filter((u, i) => i === 0 || u !== navigations[i - 1]).length;
+  const expectedErrors = rows.filter((r) =>
+    ['EXCEPTION', 'CONSOLE_ERROR'].includes(r.event_type as string),
+  ).length;
+  const apiSummary = {
+    status: detail.session.status,
+    durationMs: detail.session.durationMs,
+    pageCount: detail.session.pageCount,
+    errorCount: detail.session.errorCount,
+    expected: {
+      durationMs: Math.max(...times) - Math.min(...times),
+      pageCount: expectedPages,
+      errorCount: expectedErrors,
+    },
+    apiEvents: apiEvents.length,
+    chunks: apiReplay.chunks.length,
+  };
+  console.log(`E2E API summary:\n${JSON.stringify(apiSummary, null, 2)}`);
+  expect(detail.session.status).toBe('closed');
+  expect(detail.session.durationMs).toBe(apiSummary.expected.durationMs);
+  expect(detail.session.pageCount).toBe(expectedPages);
+  expect(detail.session.errorCount).toBe(expectedErrors);
+
+  // Another session id (random, or another tenant's) is simply not found
+  expect((await apiGet(`/sessions/${crypto.randomUUID()}`)).status).toBe(404);
+
+  // The privacy bar, applied to everything the API returned
+  const served = bodies.join('\n');
+  expect(Object.entries(SECRETS).filter(([, secret]) => served.includes(secret))).toEqual([]);
+  expect(served).not.toContain(SECRETS.normalInput);
+  expect(served).toContain('*'.repeat(SECRETS.normalInput.length));
 });

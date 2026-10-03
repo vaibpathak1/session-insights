@@ -4,7 +4,7 @@ import com.github.luben.zstd.Zstd;
 import io.sessioninsights.common.wire.WireJson;
 import io.sessioninsights.processor.Fixtures;
 import io.sessioninsights.processor.Fixtures.Session;
-import io.sessioninsights.processor.store.ManifestRow;
+import io.sessioninsights.events.ManifestRow;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.JsonNode;
 

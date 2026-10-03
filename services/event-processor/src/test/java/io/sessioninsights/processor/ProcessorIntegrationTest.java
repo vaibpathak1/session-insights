@@ -1,9 +1,9 @@
 package io.sessioninsights.processor;
 
 import com.clickhouse.client.api.Client;
-import io.sessioninsights.processor.store.EventStore;
-import io.sessioninsights.processor.store.ReplayManifestStore;
-import io.sessioninsights.processor.store.ReplayObjectStore;
+import io.sessioninsights.events.EventReader;
+import io.sessioninsights.events.ManifestReader;
+import io.sessioninsights.events.ReplayObjectReader;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -20,13 +20,13 @@ import java.util.UUID;
 public abstract class ProcessorIntegrationTest {
 
     @Autowired
-    protected EventStore eventStore;
+    protected EventReader eventReader;
 
     @Autowired
-    protected ReplayManifestStore manifestStore;
+    protected ManifestReader manifestReader;
 
     @Autowired
-    protected ReplayObjectStore objectStore;
+    protected ReplayObjectReader objectReader;
 
     protected static final Client CH = ProcessorTestInfra.CLICKHOUSE_CLIENT;
 

@@ -2,6 +2,9 @@ package io.sessioninsights.processor.config;
 
 import com.clickhouse.client.api.Client;
 import io.sessioninsights.common.wire.WireJson;
+import io.sessioninsights.events.EventReader;
+import io.sessioninsights.events.ManifestReader;
+import io.sessioninsights.events.ReplayObjectReader;
 import io.sessioninsights.processor.ProcessorMetrics;
 import io.sessioninsights.processor.store.ClickHouseEventStore;
 import io.sessioninsights.processor.store.ClickHouseInserter;
@@ -53,13 +56,29 @@ class StoreConfig {
     }
 
     @Bean
-    EventStore eventStore(ClickHouseInserter inserter, Client clickHouseClient) {
-        return new ClickHouseEventStore(inserter, clickHouseClient, WireJson.mapper());
+    EventStore eventStore(ClickHouseInserter inserter) {
+        return new ClickHouseEventStore(inserter);
     }
 
     @Bean
-    ReplayManifestStore replayManifestStore(ClickHouseInserter inserter, Client clickHouseClient) {
-        return new ClickHouseReplayManifestStore(inserter, clickHouseClient);
+    ReplayManifestStore replayManifestStore(ClickHouseInserter inserter) {
+        return new ClickHouseReplayManifestStore(inserter);
+    }
+
+    // read side (platform-events): used by tests here, and by api-service
+    @Bean
+    EventReader eventReader(Client clickHouseClient) {
+        return new EventReader(clickHouseClient);
+    }
+
+    @Bean
+    ManifestReader manifestReader(Client clickHouseClient) {
+        return new ManifestReader(clickHouseClient);
+    }
+
+    @Bean
+    ReplayObjectReader replayObjectReader(S3Client s3Client, ProcessorProperties properties) {
+        return new ReplayObjectReader(s3Client, properties.s3().bucket());
     }
 
     @Bean(destroyMethod = "close")

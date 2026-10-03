@@ -33,7 +33,7 @@ User-facing features (F1–F15) and their acceptance criteria live in
 
 | ID | Requirement | Phase |
 |---|---|---|
-| FR-TEN-1 | Tenants, sites and site keys; every record carries `tenant_id` | 1 ✅ |
+| FR-TEN-1 | Tenants, sites and site keys; every record carries `tenant_id` | 1 ✅ (enforced in the API: 5 ✅, ADR-0013) |
 | FR-TEN-2 | Configuration entities use soft delete (`is_active`, `deleted_at`) | 1 ✅ |
 | FR-ING-1 | Collector accepts batched events over HTTPS (JSON, gzip), authenticated by site key + origin allow-list | 2 ✅ |
 | FR-ING-2 | Collector validates, stamps server time, and produces to Kafka keyed by `sessionId` | 2 ✅ |
@@ -43,7 +43,7 @@ User-facing features (F1–F15) and their acceptance criteria live in
 | FR-PRC-1 | Events persisted to ClickHouse, replay chunks to object storage | 4 ✅ |
 | FR-PRC-2 | At-least-once delivery with deduplication by client event id; poison messages to DLT | 4 ✅ (store outages never dead-letter, see ADR-0011) |
 | FR-SES-1 | Session closes after inactivity timeout (default 30 min) or explicit end | 5 ✅ (inactivity; explicit end with the SDK `shutdown()` in a later phase) |
-| FR-SES-2 | Replay player streams chunks for a closed or live session | 5–6 |
+| FR-SES-2 | Replay player streams chunks for a closed or live session | 5 ✅ API side (`/api/v1/sessions/{id}/replay`); player in 6 |
 | FR-SIG-1 | Deterministic signals per session: rage clicks, dead clicks, error clusters, friction score | 8 |
 | FR-AI-1 | Only sessions above a friction threshold are sent for AI analysis | 9 |
 | FR-AI-2 | LLM receives a redacted, compact session summary (never raw DOM) | 9 |

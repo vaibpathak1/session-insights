@@ -1,4 +1,4 @@
-package io.sessioninsights.processor.store;
+package io.sessioninsights.events;
 
 import tools.jackson.databind.JsonNode;
 

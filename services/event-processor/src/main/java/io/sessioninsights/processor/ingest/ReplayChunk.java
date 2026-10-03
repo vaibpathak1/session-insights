@@ -1,9 +1,10 @@
 package io.sessioninsights.processor.ingest;
 
+import io.sessioninsights.events.ReplayObjects;
 import com.github.luben.zstd.Zstd;
 import io.sessioninsights.common.wire.ReplayEnvelope;
 import io.sessioninsights.common.wire.WireJson;
-import io.sessioninsights.processor.store.ManifestRow;
+import io.sessioninsights.events.ManifestRow;
 import io.sessioninsights.processor.store.ReplayObjectStore;
 import tools.jackson.databind.JsonNode;
 
@@ -32,7 +33,7 @@ record ReplayChunk(ReplayEnvelope envelope, byte[] compressed, ManifestRow manif
         }
         ManifestRow manifest = new ManifestRow(envelope.tenantId(), envelope.siteId(), envelope.sessionId(),
                 envelope.chunkSeq(),
-                ReplayObjectStore.objectKey(envelope.tenantId(), envelope.sessionId(), envelope.chunkSeq()),
+                ReplayObjects.objectKey(envelope.tenantId(), envelope.sessionId(), envelope.chunkSeq()),
                 compressed.length, events.size(), Instant.ofEpochMilli(first), Instant.ofEpochMilli(last),
                 fullSnapshot, envelope.receivedAt());
         return new ReplayChunk(envelope, compressed, manifest);

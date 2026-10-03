@@ -2,7 +2,7 @@ package io.sessioninsights.processor.ingest;
 
 import io.sessioninsights.common.wire.TelemetryEnvelope;
 import io.sessioninsights.common.wire.TelemetryEvent;
-import io.sessioninsights.processor.store.EventRow;
+import io.sessioninsights.events.EventRow;
 
 import java.time.Instant;
 

@@ -1,4 +1,4 @@
-package io.sessioninsights.processor.store;
+package io.sessioninsights.events;
 
 import java.time.Instant;
 import java.util.Objects;

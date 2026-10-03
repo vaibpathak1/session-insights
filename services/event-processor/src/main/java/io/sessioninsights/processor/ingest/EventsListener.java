@@ -3,7 +3,7 @@ package io.sessioninsights.processor.ingest;
 import io.sessioninsights.common.Topics;
 import io.sessioninsights.processor.ProcessorMetrics;
 import io.sessioninsights.processor.kafka.DeadLetters;
-import io.sessioninsights.processor.store.EventRow;
+import io.sessioninsights.events.EventRow;
 import io.sessioninsights.processor.store.EventStore;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.springframework.kafka.annotation.KafkaListener;

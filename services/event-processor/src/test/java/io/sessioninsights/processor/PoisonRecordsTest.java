@@ -98,7 +98,7 @@ class PoisonRecordsTest extends ProcessorIntegrationTest {
         // same key, same partition: later records still arrive
         ProcessorTestInfra.send(List.of(Fixtures.eventRecord(s, Fixtures.click(NOW.toEpochMilli() + 4, "later", null))));
         await().atMost(WAIT).until(() -> finalEventRows(s.tenantId(), s.sessionId()) == 4);
-        assertThat(eventStore.findEvents(s.tenantId(), s.sessionId()))
+        assertThat(eventReader.findEvents(s.tenantId(), s.sessionId()))
                 .extracting(r -> r.targetText()).containsExactly("ok-1", "ok-2", "ok-3", "later");
         assertThat(output.getAll()).contains("store_rejected=1").doesNotContain(secret);
     }
@@ -111,7 +111,7 @@ class PoisonRecordsTest extends ProcessorIntegrationTest {
         ProcessorTestInfra.send(List.of(Fixtures.chunkRecord(s, envelope)));
 
         assertThat(reason(singleDeadLetter(Topics.REPLAY_CHUNKS_DLT, s))).isEqualTo("unsupported_payload");
-        assertThat(manifestStore.findChunks(s.tenantId(), s.sessionId())).isEmpty();
+        assertThat(manifestReader.findChunks(s.tenantId(), s.sessionId())).isEmpty();
     }
 
     /** Phase 4b: the DLT producer takes chunks as large as the collector accepts. */
