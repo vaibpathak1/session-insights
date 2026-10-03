@@ -43,11 +43,14 @@ class ReadersTest {
         client.close();
     }
 
+    /** Recent enough for the events TTL (30 days after ts); a fixed date would expire. */
+    private static final long RECENT = System.currentTimeMillis() - 86_400_000L;
+
     @Test
     void pagesThroughASessionInOrderAndStaysStableWhileEventsArrive() {
         UUID tenant = UUID.randomUUID();
         UUID session = UUID.randomUUID();
-        long t0 = 1_790_000_000_000L;
+        long t0 = RECENT;
         for (int i = 0; i < 25; i++) {
             insertEvent(tenant, session, t0 + (i / 2) * 1000L);   // pairs share a timestamp: event_id breaks ties
         }
@@ -83,8 +86,8 @@ class ReadersTest {
         UUID session = UUID.randomUUID();
         UUID tenantA = UUID.randomUUID();
         UUID tenantB = UUID.randomUUID();
-        insertEvent(tenantA, session, 1_790_000_000_000L);
-        insertEvent(tenantB, session, 1_790_000_000_000L);
+        insertEvent(tenantA, session, RECENT);
+        insertEvent(tenantB, session, RECENT);
         insertChunk(tenantB, session, 0);
 
         assertThat(events.page(tenantA, session, null, 100)).singleElement()

@@ -42,7 +42,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 class SessionApiTest extends ApiIntegrationTest {
 
     private static final HttpClient HTTP = HttpClient.newHttpClient();
-    private static final Instant T0 = Instant.parse("2026-09-01T10:00:00Z");
+    // relative to now: ClickHouse events expire 30 days after ts (TTL), so a fixed date is a time bomb
+    private static final Instant T0 = Instant.now().truncatedTo(ChronoUnit.SECONDS).minus(1, ChronoUnit.DAYS);
     private static final String SNAPSHOT = "[{\"type\":4,\"timestamp\":1,\"data\":{\"href\":\"http://localhost/\"}},"
             + "{\"type\":2,\"timestamp\":2,\"data\":{\"node\":{\"type\":0,\"childNodes\":[]}}}]";
 

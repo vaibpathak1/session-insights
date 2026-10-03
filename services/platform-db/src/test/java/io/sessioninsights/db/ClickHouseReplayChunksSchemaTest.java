@@ -74,7 +74,7 @@ class ClickHouseReplayChunksSchemaTest {
                 INSERT INTO replay_chunks (tenant_id, site_id, session_id, chunk_seq, object_key, compressed_bytes,
                                            event_count, first_ts, last_ts, has_full_snapshot, ingested_at)
                 VALUES ({t:UUID}, generateUUIDv4(), {s:UUID}, 0, 'tenants/t/sessions/s/000000.json.zst', 123,
-                        4, toDateTime64('2026-09-27 10:00:00.000', 3), toDateTime64('2026-09-27 10:00:05.000', 3),
+                        4, now64(3) - INTERVAL 1 DAY, now64(3) - INTERVAL 1 DAY + INTERVAL 5 SECOND,
                         1, now64(3) + {delay:UInt32})""";
         for (int delay : List.of(0, 5)) {
             exec(insert, Map.of("t", tenantId, "s", sessionId, "delay", delay));

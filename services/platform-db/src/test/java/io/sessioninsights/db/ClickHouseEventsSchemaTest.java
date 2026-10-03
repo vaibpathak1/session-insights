@@ -55,13 +55,15 @@ class ClickHouseEventsSchemaTest {
         UUID eventId = UUID.randomUUID();
         UUID tenantId = UUID.randomUUID();
         UUID sessionId = UUID.randomUUID();
+        // the same ts for both inserts (it is part of the sorting key), recent enough for the 30-day TTL
+        long ts = System.currentTimeMillis() - 86_400_000L;
         String insert = """
                 INSERT INTO events (event_id, tenant_id, site_id, session_id, anonymous_id, ts, ingested_at,
                                     event_type, url, path, props)
-                VALUES ({e:UUID}, {t:UUID}, generateUUIDv4(), {s:UUID}, 'anon', toDateTime64('2026-09-27 10:00:00.000', 3),
+                VALUES ({e:UUID}, {t:UUID}, generateUUIDv4(), {s:UUID}, 'anon', fromUnixTimestamp64Milli({ts:Int64}),
                         now64(3) + {delay:UInt32}, 'CLICK', 'http://localhost/cart', '/cart', '{"button": "pay"}')""";
         for (int delay : List.of(0, 5)) {
-            exec(insert, Map.of("e", eventId, "t", tenantId, "s", sessionId, "delay", delay));
+            exec(insert, Map.of("e", eventId, "t", tenantId, "s", sessionId, "delay", delay, "ts", ts));
         }
 
         String count = "SELECT count() AS c FROM events %s WHERE tenant_id = {t:UUID} AND event_id = {e:UUID}";
@@ -78,7 +80,7 @@ class ClickHouseEventsSchemaTest {
                 INSERT INTO events (event_id, tenant_id, site_id, session_id, anonymous_id, ts, ingested_at, event_type, props)
                 SETTINGS insert_deduplication_token = 'test:%s'
                 VALUES (generateUUIDv4(), {t:UUID}, generateUUIDv4(), generateUUIDv4(), 'anon',
-                        toDateTime64('2026-09-27 10:00:00.000', 3), now64(3), 'CLICK', '{}')""".formatted(UUID.randomUUID());
+                        now64(3) - INTERVAL 1 DAY, now64(3), 'CLICK', '{}')""".formatted(UUID.randomUUID());
         for (int i = 0; i < 2; i++) {
             exec(insert, Map.of("t", tenantId));
         }
