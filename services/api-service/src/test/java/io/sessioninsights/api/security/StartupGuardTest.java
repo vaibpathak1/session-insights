@@ -45,11 +45,14 @@ class StartupGuardTest extends ApiIntegrationTest {
         props.put("clickhouse.password", TestContainers.PASSWORD);
         props.put("api.dev-auth.password", password);
         props.put("server.port", "0");
-        SpringApplicationBuilder builder = new SpringApplicationBuilder(ApiApplication.class)
-                .web(WebApplicationType.SERVLET).properties(props);
+        // command-line arguments, not builder.properties(): those are defaults, which
+        // application.yml's ${POSTGRES_URL:...localhost:5432...} would override, so the app would
+        // reach for a local database instead of the test container
+        String[] args = props.entrySet().stream().map(e -> "--" + e.getKey() + "=" + e.getValue()).toArray(String[]::new);
+        SpringApplicationBuilder builder = new SpringApplicationBuilder(ApiApplication.class).web(WebApplicationType.SERVLET);
         if (!"default".equals(profile)) {
             builder.profiles(profile);
         }
-        return builder.run();
+        return builder.run(args);
     }
 }
